@@ -1,0 +1,4 @@
+interface:
+  display_name: "用户旅程图编辑"
+  short_description: "通过澄清、提案和确认流程规范地更新用户旅程图内容"
+  default_prompt: "Use $journey-map-editor to clarify requirements and propose safe user journey map updates."

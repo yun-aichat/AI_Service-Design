@@ -1,0 +1,61 @@
+# OS and editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Dependencies
+node_modules/
+vendor/
+.npm-cache/
+
+# Build and cache output
+dist/
+build/
+out/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+.cache/
+.parcel-cache/
+.turbo/
+.next/
+coverage/
+.vercel/
+
+# Local agent and plugin coordination state
+.plugin-staging/
+.roundtable/
+.roundtable-lite/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak

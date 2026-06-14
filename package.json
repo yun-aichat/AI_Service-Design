@@ -1,0 +1,21 @@
+{
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "build": "tsc --noEmit && vite build && node scripts/prepare-static-routes.cjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "test:auth": "tsc --ignoreConfig --ignoreDeprecations 6.0 --target ES2022 --module CommonJS --moduleResolution Node --rootDir src --outDir .plugin-staging/auth-tests --esModuleInterop --skipLibCheck src/features/account/auth-port.ts src/infrastructure/cloudbase/auth/config-core.ts src/infrastructure/cloudbase/auth/auth-adapter-core.ts && node --test server/infrastructure/cloudbase/auth/*.test.cjs"
+  },
+  "dependencies": {
+    "@chakra-ui/react": "^3.35.0",
+    "@cloudbase/js-sdk": "^3.3.13",
+    "@emotion/react": "^11.14.0",
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "lucide-react": "^1.17.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "typescript": "^6.0.3",
+    "vite": "^5.4.21"
+  }
+}

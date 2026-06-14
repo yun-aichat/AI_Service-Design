@@ -1,0 +1,75 @@
+{
+  "title": "预约|到店服务用户旅程图",
+  "scenario": "用户在线预约后到店\n完成服务",
+  "persona": "工作日时间紧张的到店用户",
+  "goal": "确认预约并按时完成服务",
+  "stages": [
+    {
+      "id": "stage-discover",
+      "name": "发现需求"
+    },
+    {
+      "id": "stage-book",
+      "name": "完成预约"
+    }
+  ],
+  "rows": [
+    {
+      "id": "row-action",
+      "title": "用户|行为",
+      "type": "text",
+      "cells": {
+        "stage-discover": {
+          "text": "搜索门店\n比较服务",
+          "imageUrl": "",
+          "emotionScore": 3,
+          "emotionNote": ""
+        },
+        "stage-book": {
+          "text": "提交\"预约\"信息",
+          "imageUrl": "",
+          "emotionScore": 4,
+          "emotionNote": ""
+        }
+      }
+    },
+    {
+      "id": "row-image",
+      "title": "现场图片",
+      "type": "image",
+      "cells": {
+        "stage-discover": {
+          "text": "",
+          "imageUrl": "https://example.com/discover.png",
+          "emotionScore": 3,
+          "emotionNote": ""
+        },
+        "stage-book": {
+          "text": "",
+          "imageUrl": "",
+          "emotionScore": 4,
+          "emotionNote": ""
+        }
+      }
+    },
+    {
+      "id": "row-emotion",
+      "title": "情绪",
+      "type": "emotion",
+      "cells": {
+        "stage-discover": {
+          "text": "",
+          "imageUrl": "",
+          "emotionScore": 2,
+          "emotionNote": "焦虑 / 等待"
+        },
+        "stage-book": {
+          "text": "",
+          "imageUrl": "",
+          "emotionScore": 5,
+          "emotionNote": "放心"
+        }
+      }
+    }
+  ]
+}
