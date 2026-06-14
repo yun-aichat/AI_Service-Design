@@ -248,7 +248,7 @@ verified callback or verified query
 示例：
 
 - `order.create:order:ord_1001:req_1`
-- `credit.purchase:order:ord_1001:evt_8`
+- `ledger.purchase:order:ord_1001:settlement`
 - `credit.reserve:ai_run:run_9:req_1`
 - `credit.commit:ai_run:run_9:req_2`
 - `credit.release:ai_run:run_9:req_3`
@@ -256,6 +256,7 @@ verified callback or verified query
 规则：
 
 - 重试同一动作必须复用原 key。
+- `purchase` 属于订单级业务幂等：同一订单固定使用 `ledger.purchase:<order-reference>:settlement`。
 - `reserve / commit / release` 必须使用不同 key。
 - 同一个 key 搭配相同语义 payload 时返回第一次结果。
 - 同一个 key 搭配不同账户、reference、积分、动作档位或目标状态时返回 `409` 冲突。
@@ -295,7 +296,10 @@ CloudBase billing repository 使用以下服务端集合：
 订单与 reservation 的 `version` 从 `0` 开始。更新必须使用
 `id + expectedVersion` 条件更新，并且只在恰好更新一条文档时返回成功。
 
-单条 insert 依赖 `_id` 与 `idempotencyKey` 唯一索引避免并发重复写。repository
+单条 insert 依赖 `_id` 与 `idempotencyKey` 唯一索引避免并发重复写。`credit_ledger`
+中的 `purchase` entry 必须把订单级稳定业务键写入 `idempotencyKey`，例如
+`ledger.purchase:order:ord_1001:settlement`，由数据库唯一索引保证“一笔订单最多一条
+purchase 账本”。repository
 会在写前查询并把同一幂等键重试返回为 `null`，同时将数据库唯一索引冲突归一化为
 领域重复语义。
 

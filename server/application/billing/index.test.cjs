@@ -5,6 +5,7 @@ const {
   BillingError,
   CREDIT_LEDGER_OPERATIONS,
   buildIdempotencyKey,
+  buildOrderPurchaseIdempotencyKey,
   buildReferenceId,
   canTransitionOrderStatus,
   createBillingService,
@@ -244,6 +245,49 @@ test("reusing an idempotencyKey with inconsistent payload returns conflict", asy
     (error) =>
       error instanceof BillingError &&
       error.code === "CREDIT_RESERVATION_IDEMPOTENCY_KEY_REUSED" &&
+      error.status === 409,
+  );
+});
+
+test("purchase business key stays stable per order and rejects conflicting payload", async () => {
+  const { service } = createService();
+  const referenceId = buildReferenceId({ scope: "order", id: "order-stable-purchase" });
+  const idempotencyKey = buildOrderPurchaseIdempotencyKey(referenceId);
+
+  const first = await service.purchaseCredits({
+    accountId: "acct-1",
+    orderId: "order-stable-purchase",
+    referenceType: "order",
+    referenceId,
+    credits: 12,
+    idempotencyKey,
+  });
+  const duplicate = await service.purchaseCredits({
+    accountId: "acct-1",
+    orderId: "order-stable-purchase",
+    referenceType: "order",
+    referenceId,
+    credits: 12,
+    idempotencyKey,
+  });
+
+  assert.equal(first.duplicate, false);
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(duplicate.entry.id, first.entry.id);
+
+  await assert.rejects(
+    () =>
+      service.purchaseCredits({
+        accountId: "acct-2",
+        orderId: "order-stable-purchase",
+        referenceType: "order",
+        referenceId,
+        credits: 15,
+        idempotencyKey,
+      }),
+    (error) =>
+      error instanceof BillingError &&
+      error.code === "LEDGER_IDEMPOTENCY_KEY_REUSED" &&
       error.status === 409,
   );
 });

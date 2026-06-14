@@ -3,6 +3,7 @@ const test = require("node:test");
 
 const {
   buildIdempotencyKey,
+  buildOrderPurchaseIdempotencyKey,
   buildReferenceId,
   createBillingService,
   InMemoryBillingRepository,
@@ -59,6 +60,12 @@ async function createOrder(billingService, orderId = "order-1", accountId = "acc
   });
 
   return created.order;
+}
+
+function listPurchaseEntries(repository, referenceId) {
+  return [...repository.ledgerEntries.values()].filter(
+    (entry) => entry.referenceId === referenceId && entry.operation === "purchase",
+  );
 }
 
 test("createPaymentIntent transitions order from created to pending and returns provider intent", async () => {
@@ -443,6 +450,254 @@ test("queryPaymentStatus settles succeeded payment once and keeps ledger consist
     totalIssuedCredits: 12,
     totalExpiredCredits: 0,
   });
+});
+
+test("query settlement followed by a different success callback does not double grant purchase credits", async () => {
+  const provider = {
+    async createPayment({ order, referenceId }) {
+      return {
+        provider: "mockpay",
+        providerPaymentId: `provider-${order.id}`,
+        referenceId,
+        status: "requires_action",
+        providerStatus: "WAITING",
+        amountValue: order.amountValue,
+        currency: order.currency,
+      };
+    },
+    async queryPayment({ order, providerPaymentId }) {
+      return {
+        provider: "mockpay",
+        providerPaymentId,
+        providerEventId: "query-settled-1",
+        referenceId: order.referenceId,
+        status: "succeeded",
+        providerStatus: "SUCCESS",
+        amountValue: order.amountValue,
+        currency: order.currency,
+        checkedAt: "2026-06-07T00:12:00.000Z",
+      };
+    },
+    async verifyCallback() {
+      return {
+        provider: "mockpay",
+        eventType: "payment.succeeded",
+        providerEventId: "evt-after-query",
+        providerPaymentId: "provider-order-query-then-callback",
+        orderId: "order-query-then-callback",
+        referenceId: buildReferenceId({ scope: "order", id: "order-query-then-callback" }),
+        providerStatus: "SUCCESS",
+        amountValue: 1200,
+        currency: "CNY",
+        occurredAt: "2026-06-07T00:13:00.000Z",
+      };
+    },
+    async createRefund() {
+      throw new Error("not needed");
+    },
+    async queryRefund() {
+      throw new Error("not needed");
+    },
+  };
+
+  const { repository, billingService, integration } = createHarness({
+    providers: { mockpay: provider },
+  });
+  const order = await createOrder(
+    billingService,
+    "order-query-then-callback",
+    "acct-query-then-callback",
+  );
+  await integration.createPaymentIntent({
+    orderId: order.id,
+    referenceId: order.referenceId,
+    idempotencyKey: buildIdempotencyKey({
+      scope: "payment.intent",
+      referenceId: order.referenceId,
+      requestId: "req-intent",
+    }),
+    callbackUrl: "https://example.com/api/payments/callback",
+  });
+
+  const queried = await integration.queryPaymentStatus({
+    orderId: order.id,
+    referenceId: order.referenceId,
+    idempotencyKey: buildIdempotencyKey({
+      scope: "payment.query",
+      referenceId: order.referenceId,
+      requestId: "req-query",
+    }),
+  });
+  const callback = await integration.handlePaymentCallback({
+    provider: "mockpay",
+    headers: { "x-signature": "ignored-in-test" },
+    rawBody: JSON.stringify({ ok: true }),
+  });
+
+  const purchaseEntries = listPurchaseEntries(repository, order.referenceId);
+  assert.equal(queried.order.status, "fulfilled");
+  assert.equal(callback.order.status, "fulfilled");
+  assert.equal(purchaseEntries.length, 1);
+  assert.equal(
+    purchaseEntries[0].idempotencyKey,
+    buildOrderPurchaseIdempotencyKey(order.referenceId),
+  );
+});
+
+test("two different success events for the same order still produce one purchase ledger", async () => {
+  const callbackEvents = ["evt-success-1", "evt-success-2"];
+  const provider = {
+    async createPayment({ order, referenceId }) {
+      return {
+        provider: "mockpay",
+        providerPaymentId: `provider-${order.id}`,
+        referenceId,
+        status: "requires_action",
+        providerStatus: "WAITING",
+        amountValue: order.amountValue,
+        currency: order.currency,
+      };
+    },
+    async queryPayment() {
+      throw new Error("not needed");
+    },
+    async verifyCallback() {
+      const providerEventId = callbackEvents.shift() || "evt-success-3";
+      return {
+        provider: "mockpay",
+        eventType: "payment.succeeded",
+        providerEventId,
+        providerPaymentId: "provider-order-multi-success",
+        orderId: "order-multi-success",
+        referenceId: buildReferenceId({ scope: "order", id: "order-multi-success" }),
+        providerStatus: "SUCCESS",
+        amountValue: 1200,
+        currency: "CNY",
+        occurredAt: "2026-06-07T00:11:00.000Z",
+      };
+    },
+    async createRefund() {
+      throw new Error("not needed");
+    },
+    async queryRefund() {
+      throw new Error("not needed");
+    },
+  };
+
+  const { repository, billingService, integration } = createHarness({
+    providers: { mockpay: provider },
+  });
+  const order = await createOrder(billingService, "order-multi-success", "acct-multi-success");
+  await integration.createPaymentIntent({
+    orderId: order.id,
+    referenceId: order.referenceId,
+    callbackUrl: "https://example.com/api/payments/callback",
+    idempotencyKey: buildIdempotencyKey({
+      scope: "payment.intent",
+      referenceId: order.referenceId,
+      requestId: "req-intent",
+    }),
+  });
+
+  const first = await integration.handlePaymentCallback({
+    provider: "mockpay",
+    headers: { "x-signature": "ignored-in-test" },
+    rawBody: JSON.stringify({ ok: true }),
+  });
+  const second = await integration.handlePaymentCallback({
+    provider: "mockpay",
+    headers: { "x-signature": "ignored-in-test" },
+    rawBody: JSON.stringify({ ok: true }),
+  });
+
+  const purchaseEntries = listPurchaseEntries(repository, order.referenceId);
+  assert.equal(first.order.status, "fulfilled");
+  assert.equal(second.order.status, "fulfilled");
+  assert.equal(purchaseEntries.length, 1);
+});
+
+test("fulfilled order settles again by returning the original purchase ledger", async () => {
+  let queryEventId = "query-fulfilled-1";
+  const provider = {
+    async createPayment({ order, referenceId }) {
+      return {
+        provider: "mockpay",
+        providerPaymentId: `provider-${order.id}`,
+        referenceId,
+        status: "requires_action",
+        providerStatus: "WAITING",
+        amountValue: order.amountValue,
+        currency: order.currency,
+      };
+    },
+    async queryPayment({ order, providerPaymentId }) {
+      return {
+        provider: "mockpay",
+        providerPaymentId,
+        providerEventId: queryEventId,
+        referenceId: order.referenceId,
+        status: "succeeded",
+        providerStatus: "SUCCESS",
+        amountValue: order.amountValue,
+        currency: order.currency,
+        checkedAt: "2026-06-07T00:12:00.000Z",
+      };
+    },
+    async verifyCallback() {
+      throw new Error("not needed");
+    },
+    async createRefund() {
+      throw new Error("not needed");
+    },
+    async queryRefund() {
+      throw new Error("not needed");
+    },
+  };
+
+  const { repository, billingService, integration } = createHarness({
+    providers: { mockpay: provider },
+  });
+  const order = await createOrder(
+    billingService,
+    "order-fulfilled-repeat",
+    "acct-fulfilled-repeat",
+  );
+  await integration.createPaymentIntent({
+    orderId: order.id,
+    referenceId: order.referenceId,
+    idempotencyKey: buildIdempotencyKey({
+      scope: "payment.intent",
+      referenceId: order.referenceId,
+      requestId: "req-intent",
+    }),
+    callbackUrl: "https://example.com/api/payments/callback",
+  });
+
+  const first = await integration.queryPaymentStatus({
+    orderId: order.id,
+    referenceId: order.referenceId,
+    idempotencyKey: buildIdempotencyKey({
+      scope: "payment.query",
+      referenceId: order.referenceId,
+      requestId: "req-query-1",
+    }),
+  });
+  queryEventId = "query-fulfilled-2";
+  const second = await integration.queryPaymentStatus({
+    orderId: order.id,
+    referenceId: order.referenceId,
+    idempotencyKey: buildIdempotencyKey({
+      scope: "payment.query",
+      referenceId: order.referenceId,
+      requestId: "req-query-2",
+    }),
+  });
+
+  const purchaseEntries = listPurchaseEntries(repository, order.referenceId);
+  assert.equal(first.order.status, "fulfilled");
+  assert.equal(second.order.status, "fulfilled");
+  assert.equal(first.ledgerEntry.id, second.ledgerEntry.id);
+  assert.equal(purchaseEntries.length, 1);
 });
 
 test("queryPaymentStatus fails when success result points to a different providerPaymentId than the bound order", async () => {

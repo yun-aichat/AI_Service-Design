@@ -1,6 +1,7 @@
 const {
   BillingError,
   buildIdempotencyKey,
+  buildOrderPurchaseIdempotencyKey,
   createBillingService,
 } = require("./index.cjs");
 const {
@@ -317,6 +318,7 @@ function createBillingIntegrationService({
         providerPaymentId: paymentStatus.providerPaymentId || order.providerOrderId || null,
         providerEventId: paymentStatus.providerEventId || null,
         source,
+        purchaseBusinessKey: buildOrderPurchaseIdempotencyKey(order.referenceId),
       },
     });
 

@@ -733,7 +733,7 @@ function createBillingService({
         referenceId,
         operation: "purchase",
         credits: order.credits,
-        idempotencyKey: `ledger.purchase:${referenceId}:${requestId}`,
+        idempotencyKey: buildOrderPurchaseIdempotencyKey(referenceId),
         metadata: input?.metadata || null,
       });
 
@@ -773,6 +773,7 @@ function createBillingService({
     const credits = requirePositiveInteger(input?.credits, "credits");
     const expected = {
       accountId,
+      orderId: input?.orderId || null,
       referenceId: requireReferenceId(input?.referenceId),
       operation,
       credits,
@@ -782,7 +783,13 @@ function createBillingService({
       assertDuplicate(
         duplicate,
         expected,
-        pickRecordFields(duplicate, ["accountId", "referenceId", "operation", "credits"]),
+        pickRecordFields(duplicate, [
+          "accountId",
+          "orderId",
+          "referenceId",
+          "operation",
+          "credits",
+        ]),
         "LEDGER_IDEMPOTENCY_KEY_REUSED",
       );
       return {
@@ -982,6 +989,14 @@ function buildIdempotencyKey({ scope, referenceId, requestId }) {
   )}`;
 }
 
+function buildOrderPurchaseIdempotencyKey(referenceId) {
+  return buildIdempotencyKey({
+    scope: "ledger.purchase",
+    referenceId,
+    requestId: "settlement",
+  });
+}
+
 function pickOrderIdentity(input, creditPackage) {
   return {
     accountId: requireString(input?.accountId, "accountId"),
@@ -1143,6 +1158,7 @@ module.exports = {
   ORDER_TRANSITIONS,
   assertOrderTransition,
   buildIdempotencyKey,
+  buildOrderPurchaseIdempotencyKey,
   buildReferenceId,
   buildCreditPackage,
   calculateCreditAccount,

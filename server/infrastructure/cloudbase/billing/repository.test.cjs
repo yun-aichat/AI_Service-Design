@@ -7,6 +7,7 @@ const {
 } = require("./repository.cjs");
 const {
   buildIdempotencyKey,
+  buildOrderPurchaseIdempotencyKey,
   buildReferenceId,
   createBillingService,
 } = require("../../../application/billing/index.cjs");
@@ -107,10 +108,13 @@ test("reservation methods enforce idempotency and optimistic version updates", a
 
 test("ledger methods enforce idempotency and list entries by account", async () => {
   const { repository } = createRepository();
+  const purchaseReference = buildReferenceId({ scope: "order", id: "order-1" });
   const first = {
     id: "ledger-1",
     accountId: "acct-1",
-    idempotencyKey: "credit.purchase:order:order-1:req-1",
+    orderId: "order-1",
+    referenceId: purchaseReference,
+    idempotencyKey: buildOrderPurchaseIdempotencyKey(purchaseReference),
     operation: "purchase",
   };
   const second = {
