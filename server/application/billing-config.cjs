@@ -43,15 +43,34 @@ class InMemoryBillingConfigRepository {
     return cloneJson(collection.get(recordId) || null);
   }
 
-  async listRecords(collectionName, filters = {}) {
+  async listRecords(collectionName, options = {}) {
     const collection = requireCollection(this.collections, collectionName);
-    return [...collection.values()]
+    const filters = options.filters || {};
+    const createdFrom = normalizeDateBoundary(options.createdFrom, "createdFrom");
+    const createdTo = normalizeDateBoundary(options.createdTo, "createdTo");
+    const sortBy = requireSortKey(options.sortBy);
+    const sortDirection = requireSortDirection(options.sortDirection);
+    const limit = requirePageSize(options.limit);
+    const offset = requireOffset(options.offset);
+
+    const matched = [...collection.values()]
       .filter((record) =>
         Object.entries(filters).every(([key, value]) =>
           value === undefined || value === null ? true : record?.[key] === value,
         ),
       )
-      .map((record) => cloneJson(record));
+      .filter((record) => {
+        const createdAt = String(record?.createdAt || "");
+        if (createdFrom && createdAt < createdFrom) return false;
+        if (createdTo && createdAt > createdTo) return false;
+        return true;
+      });
+
+    const sorted = sortRecords(matched, sortBy, sortDirection);
+    return {
+      items: sorted.slice(offset, offset + limit).map((record) => cloneJson(record)),
+      total: sorted.length,
+    };
   }
 
   async upsertRecord(collectionName, recordId, record) {
@@ -240,18 +259,24 @@ function createBillingConfigService({
     const offset = requireOffset(input.offset);
     const sortBy = requireSortKey(input.sortBy);
     const sortDirection = requireSortDirection(input.sortDirection);
-    const records = await repository.listRecords(input.collectionName, input.filters);
-    const filtered = filterByCreatedAt(records, input.createdFrom, input.createdTo);
-    const sorted = sortRecords(filtered, sortBy, sortDirection);
-    const items = sorted.slice(offset, offset + limit);
+    const pageResult = await repository.listRecords(input.collectionName, {
+      filters: input.filters,
+      sortBy,
+      sortDirection,
+      limit,
+      offset,
+      createdFrom: input.createdFrom,
+      createdTo: input.createdTo,
+    });
+    const items = pageResult.items;
 
     return {
       items,
       page: {
         limit,
         offset,
-        total: sorted.length,
-        hasMore: offset + items.length < sorted.length,
+        total: pageResult.total,
+        hasMore: offset + items.length < pageResult.total,
       },
     };
   }
@@ -291,11 +316,22 @@ function validateCreditPackage(input) {
 }
 
 function validateAiActionPricing(input) {
+  const toolKey = requireString(input.toolKey, "record.toolKey");
+  const actionKey = requireString(input.actionKey, "record.actionKey");
+  const tierKey = requireString(input.tierKey, "record.tierKey");
+  const derivedPricingId = `${toolKey}:${actionKey}:${tierKey}`;
+  const providedPricingId = optionalString(input.pricingId);
+  if (providedPricingId && providedPricingId !== derivedPricingId) {
+    throw new BillingConfigError(
+      "INVALID_INPUT",
+      "pricingId must match toolKey:actionKey:tierKey.",
+    );
+  }
   return {
-    pricingId: optionalString(input.pricingId),
-    toolKey: requireString(input.toolKey, "record.toolKey"),
-    actionKey: requireString(input.actionKey, "record.actionKey"),
-    tierKey: requireString(input.tierKey, "record.tierKey"),
+    pricingId: derivedPricingId,
+    toolKey,
+    actionKey,
+    tierKey,
     displayName: requireString(input.displayName, "record.displayName"),
     creditCost: requireNonNegativeInteger(input.creditCost, "record.creditCost"),
     enabled: requireBoolean(input.enabled, "record.enabled"),
@@ -305,6 +341,17 @@ function validateAiActionPricing(input) {
 }
 
 function validateAiModelPolicy(input) {
+  const toolKey = requireString(input.toolKey, "record.toolKey");
+  const actionKey = requireString(input.actionKey, "record.actionKey");
+  const tierKey = requireString(input.tierKey, "record.tierKey");
+  const derivedPolicyId = `${toolKey}:${actionKey}:${tierKey}`;
+  const providedPolicyId = optionalString(input.policyId);
+  if (providedPolicyId && providedPolicyId !== derivedPolicyId) {
+    throw new BillingConfigError(
+      "INVALID_INPUT",
+      "policyId must match toolKey:actionKey:tierKey.",
+    );
+  }
   const fallbackProvider = optionalString(input.fallbackProvider);
   const fallbackModel = optionalString(input.fallbackModel);
   if ((fallbackProvider && !fallbackModel) || (!fallbackProvider && fallbackModel)) {
@@ -315,10 +362,10 @@ function validateAiModelPolicy(input) {
   }
 
   return {
-    policyId: optionalString(input.policyId),
-    toolKey: requireString(input.toolKey, "record.toolKey"),
-    actionKey: requireString(input.actionKey, "record.actionKey"),
-    tierKey: requireString(input.tierKey, "record.tierKey"),
+    policyId: derivedPolicyId,
+    toolKey,
+    actionKey,
+    tierKey,
     provider: requireString(input.provider, "record.provider"),
     model: requireString(input.model, "record.model"),
     temperature: requireFiniteNumber(input.temperature, "record.temperature"),
@@ -331,17 +378,6 @@ function validateAiModelPolicy(input) {
     description: optionalString(input.description),
     metadata: cloneJson(input.metadata || null),
   };
-}
-
-function filterByCreatedAt(records, createdFrom, createdTo) {
-  const from = normalizeDateBoundary(createdFrom, "createdFrom");
-  const to = normalizeDateBoundary(createdTo, "createdTo");
-  return records.filter((record) => {
-    const createdAt = String(record?.createdAt || "");
-    if (from && createdAt < from) return false;
-    if (to && createdAt > to) return false;
-    return true;
-  });
 }
 
 function sortRecords(records, sortBy, sortDirection) {

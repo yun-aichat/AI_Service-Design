@@ -111,6 +111,62 @@ test("upsertAiActionPricing creates a composite pricing id when one is not suppl
   assert.equal(record.pricingId, "journey-map:proposal:standard");
 });
 
+test("upsertAiActionPricing accepts a consistent id, rejects an inconsistent id, and updates duplicates by composite id", async () => {
+  const { service } = createHarness({
+    aiActionPricing: {
+      "journey-map:proposal:standard": {
+        id: "journey-map:proposal:standard",
+        pricingId: "journey-map:proposal:standard",
+        toolKey: "journey-map",
+        actionKey: "proposal",
+        tierKey: "standard",
+        displayName: "Old",
+        creditCost: 10,
+        enabled: true,
+        createdAt: "2026-06-13T00:00:00.000Z",
+        createdBy: "seed-admin",
+        updatedAt: "2026-06-13T00:00:00.000Z",
+        updatedBy: "seed-admin",
+      },
+    },
+  });
+
+  const updated = await service.upsertAiActionPricing({
+    user: admin,
+    record: {
+      pricingId: "journey-map:proposal:standard",
+      toolKey: "journey-map",
+      actionKey: "proposal",
+      tierKey: "standard",
+      displayName: "Journey Proposal Standard",
+      creditCost: 20,
+      enabled: true,
+    },
+  });
+
+  assert.equal(updated.pricingId, "journey-map:proposal:standard");
+  assert.equal(updated.creditCost, 20);
+  assert.equal(updated.createdBy, "seed-admin");
+  assert.equal(updated.updatedBy, "user-admin");
+
+  await assert.rejects(
+    () =>
+      service.upsertAiActionPricing({
+        user: admin,
+        record: {
+          pricingId: "journey-map:proposal:deep",
+          toolKey: "journey-map",
+          actionKey: "proposal",
+          tierKey: "standard",
+          displayName: "Journey Proposal Standard",
+          creditCost: 15,
+          enabled: true,
+        },
+      }),
+    /pricingId must match toolKey:actionKey:tierKey/,
+  );
+});
+
 test("upsertAiModelPolicy validates fallback provider/model pairs", async () => {
   const { service } = createHarness();
 
@@ -133,6 +189,50 @@ test("upsertAiModelPolicy validates fallback provider/model pairs", async () => 
         },
       }),
     /fallbackProvider and fallbackModel must be provided together/,
+  );
+});
+
+test("upsertAiModelPolicy accepts a consistent id and rejects an inconsistent id", async () => {
+  const { service } = createHarness();
+
+  const record = await service.upsertAiModelPolicy({
+    user: admin,
+    record: {
+      policyId: "journey-map:proposal:standard",
+      toolKey: "journey-map",
+      actionKey: "proposal",
+      tierKey: "standard",
+      provider: "glm",
+      model: "glm-4.5",
+      temperature: 0.2,
+      maxInputTokens: 8000,
+      maxOutputTokens: 2000,
+      timeoutMs: 30000,
+      enabled: true,
+    },
+  });
+
+  assert.equal(record.policyId, "journey-map:proposal:standard");
+
+  await assert.rejects(
+    () =>
+      service.upsertAiModelPolicy({
+        user: admin,
+        record: {
+          policyId: "journey-map:proposal:deep",
+          toolKey: "journey-map",
+          actionKey: "proposal",
+          tierKey: "standard",
+          provider: "glm",
+          model: "glm-4.5",
+          temperature: 0.2,
+          maxInputTokens: 8000,
+          maxOutputTokens: 2000,
+          timeoutMs: 30000,
+          enabled: true,
+        },
+      }),
+    /policyId must match toolKey:actionKey:tierKey/,
   );
 });
 

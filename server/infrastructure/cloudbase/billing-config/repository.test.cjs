@@ -21,10 +21,81 @@ test("listRecords returns filtered billing config data from the target collectio
     },
   });
 
-  const active = await repository.listRecords("credit_packages", { enabled: true });
+  const active = await repository.listRecords("credit_packages", {
+    filters: { enabled: true },
+  });
 
-  assert.equal(active.length, 1);
-  assert.equal(active[0].packageId, "starter-100");
+  assert.equal(active.total, 1);
+  assert.equal(active.items.length, 1);
+  assert.equal(active.items[0].packageId, "starter-100");
+});
+
+test("listRecords pushes filter, sort, range, offset, and limit to the collection query path", async () => {
+  const { repository, queryLog } = createRepository({
+    credit_ledger: {
+      "ledger-1": {
+        id: "ledger-1",
+        accountId: "acct-1",
+        operation: "purchase",
+        createdAt: "2026-06-14T00:00:00.000Z",
+      },
+      "ledger-2": {
+        id: "ledger-2",
+        accountId: "acct-1",
+        operation: "grant",
+        createdAt: "2026-06-13T00:00:00.000Z",
+      },
+      "ledger-3": {
+        id: "ledger-3",
+        accountId: "acct-2",
+        operation: "purchase",
+        createdAt: "2026-06-12T00:00:00.000Z",
+      },
+    },
+  });
+
+  const result = await repository.listRecords("credit_ledger", {
+    filters: { accountId: "acct-1" },
+    createdFrom: "2026-06-13T00:00:00.000Z",
+    createdTo: "2026-06-14T23:59:59.000Z",
+    sortBy: "createdAt",
+    sortDirection: "desc",
+    offset: 1,
+    limit: 1,
+  });
+
+  assert.equal(result.total, 2);
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].id, "ledger-2");
+  assert.deepEqual(queryLog[0], {
+    type: "where",
+    query: {
+      accountId: "acct-1",
+      createdAt: {
+        __billingRange: true,
+        gte: "2026-06-13T00:00:00.000Z",
+        lte: "2026-06-14T23:59:59.000Z",
+      },
+    },
+  });
+  assert.deepEqual(queryLog.slice(1), [
+    { type: "orderBy", field: "createdAt", direction: "desc" },
+    { type: "skip", value: 1 },
+    { type: "limit", value: 1 },
+    { type: "get" },
+    {
+      type: "where",
+      query: {
+        accountId: "acct-1",
+        createdAt: {
+          __billingRange: true,
+          gte: "2026-06-13T00:00:00.000Z",
+          lte: "2026-06-14T23:59:59.000Z",
+        },
+      },
+    },
+    { type: "count" },
+  ]);
 });
 
 test("upsertRecord overwrites the same billing config id instead of duplicating it", async () => {
@@ -50,6 +121,7 @@ function createRepository(seed = {}) {
   return {
     repository: new CloudBaseBillingConfigRepository(database),
     stores: database.stores,
+    queryLog: database.queryLog,
   };
 }
 
@@ -72,20 +144,28 @@ function createFakeDatabase(seed = {}) {
     ),
   };
 
+  const queryLog = [];
+
   return {
     stores,
+    queryLog,
     collection(name) {
       const store = stores[name];
       if (!store) throw new Error(`Unknown collection "${name}".`);
-      return createFakeCollection(store);
+      return createFakeCollection(store, queryLog);
     },
   };
 }
 
-function createFakeCollection(store) {
+function createFakeCollection(store, queryLog) {
   return {
     async get() {
+      queryLog.push({ type: "get" });
       return { data: [...store.values()].map((entry) => cloneJson(entry)) };
+    },
+    async count() {
+      queryLog.push({ type: "count" });
+      return { total: store.size };
     },
     doc(id) {
       return {
@@ -99,16 +179,99 @@ function createFakeCollection(store) {
       };
     },
     where(query) {
-      const matched = [...store.values()].filter((entry) =>
-        Object.entries(query).every(([key, value]) => entry?.[key] === value),
-      );
-      return {
-        async get() {
-          return { data: matched.map((entry) => cloneJson(entry)) };
-        },
-      };
+      queryLog.push({ type: "where", query: cloneJson(query) });
+      return createFakeQuery(store, queryLog, query);
+    },
+    orderBy(field, direction) {
+      return createFakeQuery(store, queryLog).orderBy(field, direction);
+    },
+    skip(value) {
+      return createFakeQuery(store, queryLog).skip(value);
+    },
+    limit(value) {
+      return createFakeQuery(store, queryLog).limit(value);
     },
   };
+}
+
+function createFakeQuery(store, queryLog, query = {}, state = {}) {
+  const nextState = {
+    query,
+    orderByField: state.orderByField || null,
+    orderDirection: state.orderDirection || "asc",
+    skipValue: state.skipValue || 0,
+    limitValue: state.limitValue || null,
+  };
+
+  return {
+    where(nextQuery) {
+      queryLog.push({ type: "where", query: cloneJson(nextQuery) });
+      return createFakeQuery(store, queryLog, nextQuery, nextState);
+    },
+    orderBy(field, direction) {
+      queryLog.push({ type: "orderBy", field, direction });
+      return createFakeQuery(store, queryLog, nextState.query, {
+        ...nextState,
+        orderByField: field,
+        orderDirection: direction,
+      });
+    },
+    skip(value) {
+      queryLog.push({ type: "skip", value });
+      return createFakeQuery(store, queryLog, nextState.query, {
+        ...nextState,
+        skipValue: value,
+      });
+    },
+    limit(value) {
+      queryLog.push({ type: "limit", value });
+      return createFakeQuery(store, queryLog, nextState.query, {
+        ...nextState,
+        limitValue: value,
+      });
+    },
+    async get() {
+      queryLog.push({ type: "get" });
+      const filtered = applyFakeQuery([...store.values()], nextState.query);
+      const ordered = applyFakeOrdering(filtered, nextState.orderByField, nextState.orderDirection);
+      const sliced = ordered.slice(
+        nextState.skipValue,
+        nextState.limitValue === null
+          ? undefined
+          : nextState.skipValue + nextState.limitValue,
+      );
+      return { data: sliced.map((entry) => cloneJson(entry)) };
+    },
+    async count() {
+      queryLog.push({ type: "count" });
+      return { total: applyFakeQuery([...store.values()], nextState.query).length };
+    },
+  };
+}
+
+function applyFakeQuery(records, query) {
+  return records.filter((entry) =>
+    Object.entries(query).every(([key, value]) => {
+      if (value?.__billingRange) {
+        const current = String(entry?.[key] || "");
+        if (value.gte && current < value.gte) return false;
+        if (value.lte && current > value.lte) return false;
+        return true;
+      }
+      return entry?.[key] === value;
+    }),
+  );
+}
+
+function applyFakeOrdering(records, field, direction) {
+  if (!field) return records;
+  const modifier = direction === "asc" ? 1 : -1;
+  return [...records].sort((left, right) => {
+    const leftValue = String(left?.[field] ?? "");
+    const rightValue = String(right?.[field] ?? "");
+    if (leftValue === rightValue) return 0;
+    return leftValue < rightValue ? -1 * modifier : 1 * modifier;
+  });
 }
 
 function cloneJson(value) {
