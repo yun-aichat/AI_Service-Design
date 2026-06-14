@@ -303,6 +303,18 @@ purchase 账本”。repository
 会在写前查询并把同一幂等键重试返回为 `null`，同时将数据库唯一索引冲突归一化为
 领域重复语义。
 
+余额查询使用完整账本读取，不允许单次 `where({ accountId }).get()` 假设结果完整。
+当前正式方案为：按 `accountId` 过滤后，使用 `createdAt asc` + `id asc` 的稳定排序，
+以固定页大小循环分页读取到账本结束，再由 application 层的
+`calculateCreditAccount()` 计算 `available / reserved / consumed / totalIssued /
+totalExpired`。分页读取过程中如果 CloudBase 查询失败，或分页结果出现重复 ledger id，
+必须直接抛错，不能返回部分余额。
+
+为支撑上述余额查询，`credit_ledger` 需要以下索引：
+
+- 唯一索引：`idempotencyKey`
+- 组合查询索引：`accountId, createdAt, id`
+
 以下多记录流程由 `createBillingService()` 通过 `runInTransaction()` 原子编排：
 
 - 创建 reservation 与写入 `reserve` ledger entry。

@@ -7,6 +7,7 @@ const BILLING_COLLECTIONS = Object.freeze({
   reservations: "credit_reservations",
   ledgerEntries: "credit_ledger",
 });
+const LEDGER_PAGE_SIZE = 100;
 
 class CloudBaseBillingRepository {
   constructor(database) {
@@ -122,8 +123,36 @@ class CloudBaseBillingRepository {
   }
 
   async listLedgerEntriesByAccount(accountId) {
-    const result = await this.ledgerEntries.where({ accountId }).get();
-    return records(result);
+    const entries = [];
+    const seenEntryIds = new Set();
+    let offset = 0;
+
+    while (true) {
+      const result = await this.ledgerEntries
+        .where({ accountId })
+        .orderBy("createdAt", "asc")
+        .orderBy("id", "asc")
+        .skip(offset)
+        .limit(LEDGER_PAGE_SIZE)
+        .get();
+      const page = records(result);
+      if (page.length === 0) break;
+
+      for (const entry of page) {
+        if (seenEntryIds.has(entry.id)) {
+          throw new Error(
+            `Duplicate ledger entry "${entry.id}" encountered while paging account "${accountId}".`,
+          );
+        }
+        seenEntryIds.add(entry.id);
+        entries.push(entry);
+      }
+
+      if (page.length < LEDGER_PAGE_SIZE) break;
+      offset += page.length;
+    }
+
+    return entries;
   }
 
   async runInTransaction(work) {
@@ -288,4 +317,5 @@ function normalizeRecord(value) {
 module.exports = {
   BILLING_COLLECTIONS,
   CloudBaseBillingRepository,
+  LEDGER_PAGE_SIZE,
 };

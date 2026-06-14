@@ -4,11 +4,13 @@ const test = require("node:test");
 const {
   BILLING_COLLECTIONS,
   CloudBaseBillingRepository,
+  LEDGER_PAGE_SIZE,
 } = require("./repository.cjs");
 const {
   buildIdempotencyKey,
   buildOrderPurchaseIdempotencyKey,
   buildReferenceId,
+  calculateCreditAccount,
   createBillingService,
 } = require("../../../application/billing/index.cjs");
 
@@ -255,32 +257,191 @@ test("runInTransaction rolls all collection writes back on failure", async () =>
   assert.equal(await repository.getReservation("reservation-rollback"), null);
 });
 
-function createRepository() {
-  const database = createFakeDatabase();
+test("listLedgerEntriesByAccount reads more than 250 entries across pages", async () => {
+  const totalEntries = 251;
+  const entries = Array.from({ length: totalEntries }, (_, index) =>
+    makeLedgerEntry({
+      id: `ledger-${String(index).padStart(3, "0")}`,
+      accountId: "acct-many",
+      createdAt: `2026-06-${String((index % 28) + 1).padStart(2, "0")}T00:00:${String(
+        index % 60,
+      ).padStart(2, "0")}.000Z`,
+    }),
+  );
+  const { repository, queryLog } = createRepository({
+    ledgerEntries: entries,
+  });
+
+  const result = await repository.listLedgerEntriesByAccount("acct-many");
+
+  assert.equal(result.length, totalEntries);
+  assert.equal(
+    queryLog.filter((entry) => entry.type === "get").length >= 3,
+    true,
+  );
+});
+
+test("listLedgerEntriesByAccount keeps boundary records stable without duplicates or omissions", async () => {
+  const entries = Array.from({ length: LEDGER_PAGE_SIZE + 2 }, (_, index) =>
+    makeLedgerEntry({
+      id: `boundary-${String(index).padStart(3, "0")}`,
+      accountId: "acct-boundary",
+      createdAt:
+        index < LEDGER_PAGE_SIZE
+          ? "2026-06-14T00:00:00.000Z"
+          : "2026-06-15T00:00:00.000Z",
+    }),
+  ).reverse();
+  const { repository } = createRepository({
+    ledgerEntries: entries,
+  });
+
+  const result = await repository.listLedgerEntriesByAccount("acct-boundary");
+
+  assert.equal(result.length, LEDGER_PAGE_SIZE + 2);
+  assert.deepEqual(
+    result.map((entry) => entry.id),
+    [...entries]
+      .sort((left, right) =>
+        left.createdAt === right.createdAt
+          ? left.id.localeCompare(right.id)
+          : left.createdAt.localeCompare(right.createdAt),
+      )
+      .map((entry) => entry.id),
+  );
+});
+
+test("listLedgerEntriesByAccount does not mix ledger rows from other accounts", async () => {
+  const { repository } = createRepository({
+    ledgerEntries: [
+      makeLedgerEntry({ id: "acct-a-1", accountId: "acct-a", createdAt: "2026-06-14T00:00:00.000Z" }),
+      makeLedgerEntry({ id: "acct-b-1", accountId: "acct-b", createdAt: "2026-06-14T00:00:01.000Z" }),
+      makeLedgerEntry({ id: "acct-a-2", accountId: "acct-a", createdAt: "2026-06-14T00:00:02.000Z" }),
+    ],
+  });
+
+  const result = await repository.listLedgerEntriesByAccount("acct-a");
+
+  assert.deepEqual(
+    result.map((entry) => entry.id),
+    ["acct-a-1", "acct-a-2"],
+  );
+});
+
+test("getCreditAccount uses the full CloudBase ledger and matches calculateCreditAccount", async () => {
+  const ledgerEntries = [
+    makeLedgerEntry({
+      id: "purchase-1",
+      accountId: "acct-calc",
+      operation: "purchase",
+      credits: 100,
+      availableDelta: 100,
+      createdAt: "2026-06-14T00:00:00.000Z",
+    }),
+    makeLedgerEntry({
+      id: "reserve-1",
+      accountId: "acct-calc",
+      operation: "reserve",
+      credits: 30,
+      availableDelta: -30,
+      reservedDelta: 30,
+      createdAt: "2026-06-14T00:00:01.000Z",
+    }),
+    makeLedgerEntry({
+      id: "commit-1",
+      accountId: "acct-calc",
+      operation: "commit",
+      credits: 30,
+      reservedDelta: -30,
+      consumedDelta: 30,
+      createdAt: "2026-06-14T00:00:02.000Z",
+    }),
+    makeLedgerEntry({
+      id: "grant-1",
+      accountId: "acct-calc",
+      operation: "grant",
+      credits: 20,
+      availableDelta: 20,
+      createdAt: "2026-06-14T00:00:03.000Z",
+    }),
+    makeLedgerEntry({
+      id: "expire-1",
+      accountId: "acct-calc",
+      operation: "expire",
+      credits: 10,
+      availableDelta: -10,
+      createdAt: "2026-06-14T00:00:04.000Z",
+    }),
+  ];
+  const { repository } = createRepository({ ledgerEntries });
+  const service = createBillingService({ repository });
+
+  const account = await service.getCreditAccount({ accountId: "acct-calc" });
+
+  assert.deepEqual(account, calculateCreditAccount("acct-calc", ledgerEntries));
+});
+
+test("listLedgerEntriesByAccount rethrows CloudBase query failures without partial results", async () => {
+  const { repository } = createRepository({
+    ledgerEntries: Array.from({ length: LEDGER_PAGE_SIZE + 1 }, (_, index) =>
+      makeLedgerEntry({
+        id: `ledger-fail-${index}`,
+        accountId: "acct-fail",
+        createdAt: `2026-06-14T00:00:${String(index % 60).padStart(2, "0")}.000Z`,
+      }),
+    ),
+    failOnSkipValue: LEDGER_PAGE_SIZE,
+  });
+  const service = createBillingService({ repository });
+
+  await assert.rejects(
+    () => repository.listLedgerEntriesByAccount("acct-fail"),
+    /Injected CloudBase ledger query failure/,
+  );
+  await assert.rejects(
+    () => service.getCreditAccount({ accountId: "acct-fail" }),
+    /Injected CloudBase ledger query failure/,
+  );
+});
+
+function createRepository(options = {}) {
+  const database = createFakeDatabase(options);
   return {
     repository: new CloudBaseBillingRepository(database),
     stores: database.stores,
+    queryLog: database.queryLog,
   };
 }
 
-function createFakeDatabase() {
+function createFakeDatabase(options = {}) {
   const stores = Object.fromEntries(
     Object.values(BILLING_COLLECTIONS).map((name) => [name, new Map()]),
   );
   const requestedCollections = [];
+  const queryLog = [];
+  seedStore(stores[BILLING_COLLECTIONS.creditPackages], options.creditPackages, "packageId");
+  seedStore(stores[BILLING_COLLECTIONS.orders], options.orders, "id");
+  seedStore(stores[BILLING_COLLECTIONS.orderActions], options.orderActions, "id");
+  seedStore(stores[BILLING_COLLECTIONS.reservations], options.reservations, "id");
+  seedStore(stores[BILLING_COLLECTIONS.ledgerEntries], options.ledgerEntries, "id");
 
   const database = {
     stores,
     requestedCollections,
+    queryLog,
     collection(name) {
       requestedCollections.push(name);
       const store = stores[name];
       if (!store) throw new Error(`Unknown collection "${name}".`);
-      return createFakeCollection(store);
+      return createFakeCollection(store, queryLog, options);
     },
     async runTransaction(work) {
       const transactionStores = cloneStores(stores);
-      const transactionDatabase = createFakeDatabaseFromStores(transactionStores);
+      const transactionDatabase = createFakeDatabaseFromStores(
+        transactionStores,
+        queryLog,
+        options,
+      );
       const result = await work(transactionDatabase);
       for (const [name, transactionStore] of Object.entries(transactionStores)) {
         stores[name].clear();
@@ -294,12 +455,12 @@ function createFakeDatabase() {
   return database;
 }
 
-function createFakeDatabaseFromStores(stores) {
+function createFakeDatabaseFromStores(stores, queryLog, options = {}) {
   return {
     collection(name) {
       const store = stores[name];
       if (!store) throw new Error(`Unknown collection "${name}".`);
-      return createFakeCollection(store);
+      return createFakeCollection(store, queryLog, options);
     },
   };
 }
@@ -313,7 +474,7 @@ function cloneStores(stores) {
   );
 }
 
-function createFakeCollection(store) {
+function createFakeCollection(store, queryLog, options = {}) {
   return {
     async add(record) {
       const id = record._id;
@@ -326,6 +487,9 @@ function createFakeCollection(store) {
       return { id };
     },
     async get() {
+      if (shouldFailGet(queryLog, options, 0)) {
+        throw new Error("Injected CloudBase ledger query failure.");
+      }
       return { data: [...store.values()].map(cloneJson) };
     },
     doc(id) {
@@ -340,31 +504,126 @@ function createFakeCollection(store) {
       };
     },
     where(query) {
+      queryLog.push({ type: "where", query: cloneJson(query) });
       const matched = () =>
         [...store.values()].filter((record) =>
           Object.entries(query).every(([key, value]) => record?.[key] === value),
         );
-      return {
-        limit(count) {
-          return {
-            async get() {
-              return { data: matched().slice(0, count).map(cloneJson) };
-            },
-          };
-        },
-        async get() {
-          return { data: matched().map(cloneJson) };
-        },
-        async update(nextRecord) {
-          let updated = 0;
-          for (const record of matched()) {
-            store.set(record.id, cloneJson(nextRecord));
-            updated += 1;
-          }
-          return { updated };
-        },
-      };
+      return createFakeQuery(store, queryLog, matched, options);
     },
+  };
+}
+
+function createFakeQuery(store, queryLog, matched, options = {}, state = {}) {
+  const nextState = {
+    orderByFields: state.orderByFields || [],
+    skipValue: state.skipValue || 0,
+    limitValue: state.limitValue ?? null,
+  };
+
+  return {
+    orderBy(field, direction) {
+      queryLog.push({ type: "orderBy", field, direction });
+      return createFakeQuery(store, queryLog, matched, options, {
+        ...nextState,
+        orderByFields: [...nextState.orderByFields, { field, direction }],
+      });
+    },
+    skip(value) {
+      queryLog.push({ type: "skip", value });
+      return createFakeQuery(store, queryLog, matched, options, {
+        ...nextState,
+        skipValue: value,
+      });
+    },
+    limit(value) {
+      queryLog.push({ type: "limit", value });
+      return createFakeQuery(store, queryLog, matched, options, {
+        ...nextState,
+        limitValue: value,
+      });
+    },
+    async get() {
+      queryLog.push({ type: "get" });
+      if (shouldFailGet(queryLog, options, nextState.skipValue)) {
+        throw new Error("Injected CloudBase ledger query failure.");
+      }
+      const ordered = applyFakeOrdering(matched(), nextState.orderByFields);
+      const sliced = ordered.slice(
+        nextState.skipValue,
+        nextState.limitValue === null
+          ? undefined
+          : nextState.skipValue + nextState.limitValue,
+      );
+      return { data: sliced.map(cloneJson) };
+    },
+    async update(nextRecord) {
+      let updated = 0;
+      for (const record of matched()) {
+        store.set(record.id, cloneJson(nextRecord));
+        updated += 1;
+      }
+      return { updated };
+    },
+  };
+}
+
+function applyFakeOrdering(records, orderByFields) {
+  if (!orderByFields.length) return records.map(cloneJson);
+  return [...records].sort((left, right) => {
+    for (const { field, direction } of orderByFields) {
+      const leftValue = String(left?.[field] || "");
+      const rightValue = String(right?.[field] || "");
+      const comparison = leftValue.localeCompare(rightValue);
+      if (comparison !== 0) {
+        return direction === "desc" ? -comparison : comparison;
+      }
+    }
+    return 0;
+  });
+}
+
+function seedStore(store, records = [], idField) {
+  for (const record of records || []) {
+    store.set(record[idField], cloneJson(record));
+  }
+}
+
+function shouldFailGet(queryLog, options, skipValue) {
+  if (options.failOnSkipValue !== undefined && skipValue === options.failOnSkipValue) {
+    return true;
+  }
+  const { failOnGetCall } = options;
+  if (!failOnGetCall) return false;
+  const getCallCount = queryLog.filter((entry) => entry.type === "get").length;
+  return getCallCount === failOnGetCall;
+}
+
+function makeLedgerEntry(overrides = {}) {
+  return {
+    id: overrides.id || "ledger-default",
+    accountId: overrides.accountId || "acct-default",
+    orderId: overrides.orderId || null,
+    reservationId: overrides.reservationId || null,
+    referenceType: overrides.referenceType || "order",
+    referenceId:
+      overrides.referenceId || buildReferenceId({ scope: "order", id: overrides.id || "ledger-default" }),
+    idempotencyKey:
+      overrides.idempotencyKey ||
+      buildIdempotencyKey({
+        scope: `ledger.${overrides.operation || "purchase"}`,
+        referenceId:
+          overrides.referenceId ||
+          buildReferenceId({ scope: "order", id: overrides.id || "ledger-default" }),
+        requestId: overrides.id || "ledger-default",
+      }),
+    operation: overrides.operation || "purchase",
+    credits: overrides.credits ?? 1,
+    availableDelta: overrides.availableDelta ?? 1,
+    reservedDelta: overrides.reservedDelta ?? 0,
+    consumedDelta: overrides.consumedDelta ?? 0,
+    metadata: overrides.metadata || null,
+    createdAt: overrides.createdAt || "2026-06-14T00:00:00.000Z",
   };
 }
 
