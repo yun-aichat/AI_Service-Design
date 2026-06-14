@@ -71,13 +71,21 @@ function buildQuery(database, input) {
   if (!createdFrom && !createdTo) return query;
 
   const command = database?.command;
-  if (command?.gte && command?.lte) {
-    if (createdFrom && createdTo) {
-      query.createdAt = command.and([command.gte(createdFrom), command.lte(createdTo)]);
-    } else if (createdFrom) {
+  const hasGte = typeof command?.gte === "function";
+  const hasLte = typeof command?.lte === "function";
+  const hasAnd = typeof command?.and === "function";
+  if ((createdFrom && !createdTo && hasGte) || (!createdFrom && createdTo && hasLte)) {
+    if (createdFrom) {
       query.createdAt = command.gte(createdFrom);
     } else {
       query.createdAt = command.lte(createdTo);
+    }
+    return query;
+  }
+
+  if (createdFrom && createdTo && hasGte && hasLte && hasAnd) {
+    if (createdFrom && createdTo) {
+      query.createdAt = command.and([command.gte(createdFrom), command.lte(createdTo)]);
     }
     return query;
   }

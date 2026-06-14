@@ -98,6 +98,127 @@ test("listRecords pushes filter, sort, range, offset, and limit to the collectio
   ]);
 });
 
+test("listRecords uses command pushdown when gte, lte, and and all exist", async () => {
+  const { repository, queryLog, command } = createRepository(
+    {
+      credit_ledger: {
+        "ledger-1": {
+          id: "ledger-1",
+          accountId: "acct-1",
+          createdAt: "2026-06-14T00:00:00.000Z",
+        },
+      },
+    },
+    {
+      command: createFakeCommand({ includeAnd: true }),
+    },
+  );
+
+  await repository.listRecords("credit_ledger", {
+    filters: { accountId: "acct-1" },
+    createdFrom: "2026-06-13T00:00:00.000Z",
+    createdTo: "2026-06-14T23:59:59.000Z",
+  });
+
+  assert.deepEqual(queryLog[0], {
+    type: "where",
+    query: {
+      accountId: "acct-1",
+      createdAt: {
+        __op: "and",
+        value: [
+          { __op: "gte", value: "2026-06-13T00:00:00.000Z" },
+          { __op: "lte", value: "2026-06-14T23:59:59.000Z" },
+        ],
+      },
+    },
+  });
+  assert.equal(command.calls.gte.length, 1);
+  assert.equal(command.calls.lte.length, 1);
+  assert.equal(command.calls.and.length, 1);
+});
+
+test("listRecords falls back safely when gte and lte exist but and is missing", async () => {
+  const { repository, queryLog, command } = createRepository(
+    {
+      credit_ledger: {
+        "ledger-1": {
+          id: "ledger-1",
+          accountId: "acct-1",
+          createdAt: "2026-06-14T00:00:00.000Z",
+        },
+      },
+    },
+    {
+      command: createFakeCommand({ includeAnd: false }),
+    },
+  );
+
+  await repository.listRecords("credit_ledger", {
+    filters: { accountId: "acct-1" },
+    createdFrom: "2026-06-13T00:00:00.000Z",
+    createdTo: "2026-06-14T23:59:59.000Z",
+  });
+
+  assert.deepEqual(queryLog[0], {
+    type: "where",
+    query: {
+      accountId: "acct-1",
+      createdAt: {
+        __billingRange: true,
+        gte: "2026-06-13T00:00:00.000Z",
+        lte: "2026-06-14T23:59:59.000Z",
+      },
+    },
+  });
+  assert.equal(command.calls.gte.length, 0);
+  assert.equal(command.calls.lte.length, 0);
+});
+
+test("listRecords keeps single-boundary createdAt filters working without command.and", async () => {
+  const { repository, queryLog, command } = createRepository(
+    {
+      credit_ledger: {
+        "ledger-1": {
+          id: "ledger-1",
+          accountId: "acct-1",
+          createdAt: "2026-06-14T00:00:00.000Z",
+        },
+      },
+    },
+    {
+      command: createFakeCommand({ includeAnd: false }),
+    },
+  );
+
+  await repository.listRecords("credit_ledger", {
+    filters: { accountId: "acct-1" },
+    createdFrom: "2026-06-13T00:00:00.000Z",
+  });
+  await repository.listRecords("credit_ledger", {
+    filters: { accountId: "acct-1" },
+    createdTo: "2026-06-14T23:59:59.000Z",
+  });
+
+  const whereEntries = queryLog.filter((entry) => entry.type === "where");
+  assert.deepEqual(queryLog[0], {
+    type: "where",
+    query: {
+      accountId: "acct-1",
+      createdAt: { __op: "gte", value: "2026-06-13T00:00:00.000Z" },
+    },
+  });
+  assert.deepEqual(whereEntries.at(-1), {
+    type: "where",
+    query: {
+      accountId: "acct-1",
+      createdAt: { __op: "lte", value: "2026-06-14T23:59:59.000Z" },
+    },
+  });
+  assert.equal(command.calls.gte.length, 1);
+  assert.equal(command.calls.lte.length, 1);
+});
+
 test("upsertRecord overwrites the same billing config id instead of duplicating it", async () => {
   const { repository, stores } = createRepository();
 
@@ -116,16 +237,17 @@ test("upsertRecord overwrites the same billing config id instead of duplicating 
   assert.equal(stores.ai_action_pricing.get("journey:proposal:standard").creditCost, 20);
 });
 
-function createRepository(seed = {}) {
-  const database = createFakeDatabase(seed);
+function createRepository(seed = {}, options = {}) {
+  const database = createFakeDatabase(seed, options);
   return {
     repository: new CloudBaseBillingConfigRepository(database),
     stores: database.stores,
     queryLog: database.queryLog,
+    command: database.command,
   };
 }
 
-function createFakeDatabase(seed = {}) {
+function createFakeDatabase(seed = {}, options = {}) {
   const stores = {
     credit_packages: new Map(
       Object.entries(seed.credit_packages || {}).map(([id, value]) => [id, cloneJson(value)]),
@@ -145,10 +267,12 @@ function createFakeDatabase(seed = {}) {
   };
 
   const queryLog = [];
+  const command = options.command || null;
 
   return {
     stores,
     queryLog,
+    command,
     collection(name) {
       const store = stores[name];
       if (!store) throw new Error(`Unknown collection "${name}".`);
@@ -258,9 +382,47 @@ function applyFakeQuery(records, query) {
         if (value.lte && current > value.lte) return false;
         return true;
       }
+      if (value?.__op === "gte") {
+        return String(entry?.[key] || "") >= value.value;
+      }
+      if (value?.__op === "lte") {
+        return String(entry?.[key] || "") <= value.value;
+      }
+      if (value?.__op === "and") {
+        return value.value.every((item) => applyFakeQuery([entry], { [key]: item }).length === 1);
+      }
       return entry?.[key] === value;
     }),
   );
+}
+
+function createFakeCommand({ includeAnd }) {
+  const calls = {
+    gte: [],
+    lte: [],
+    and: [],
+  };
+
+  const command = {
+    calls,
+    gte(value) {
+      calls.gte.push(value);
+      return { __op: "gte", value };
+    },
+    lte(value) {
+      calls.lte.push(value);
+      return { __op: "lte", value };
+    },
+  };
+
+  if (includeAnd) {
+    command.and = function and(value) {
+      calls.and.push(cloneJson(value));
+      return { __op: "and", value };
+    };
+  }
+
+  return command;
 }
 
 function applyFakeOrdering(records, field, direction) {
