@@ -224,6 +224,16 @@ class InMemoryBillingRepository {
       .filter((entry) => entry.accountId === accountId)
       .map((entry) => cloneJson(entry));
   }
+
+  async runInTransaction(work) {
+    const snapshot = snapshotInMemoryRepository(this);
+    try {
+      return await work(this);
+    } catch (error) {
+      restoreInMemoryRepository(this, snapshot);
+      throw error;
+    }
+  }
 }
 
 function createBillingService({
@@ -365,11 +375,18 @@ function createBillingService({
   }
 
   async function transitionOrderStatus(input) {
+    return runInTransaction((transactionRepository) =>
+      transitionOrderStatusWithRepository(transactionRepository, input),
+    );
+  }
+
+  async function transitionOrderStatusWithRepository(activeRepository, input) {
     const orderId = requireString(input?.orderId, "orderId");
     const referenceId = requireReferenceId(input?.referenceId);
     const idempotencyKey = requireIdempotencyKey(input?.idempotencyKey);
     const nextStatus = requireOrderStatus(input?.nextStatus, "nextStatus");
-    const duplicateAction = await repository.findOrderActionByIdempotencyKey(idempotencyKey);
+    const duplicateAction =
+      await activeRepository.findOrderActionByIdempotencyKey(idempotencyKey);
     if (duplicateAction) {
       assertDuplicate(
         duplicateAction,
@@ -377,11 +394,11 @@ function createBillingService({
         pickRecordFields(duplicateAction, ["orderId", "nextStatus", "referenceId"]),
         "ORDER_IDEMPOTENCY_KEY_REUSED",
       );
-      const duplicateOrder = await repository.getOrder(orderId);
+      const duplicateOrder = await activeRepository.getOrder(orderId);
       return { order: duplicateOrder, duplicate: true };
     }
 
-    const order = await repository.getOrder(orderId);
+    const order = await activeRepository.getOrder(orderId);
     if (!order) {
       throw new BillingError("ORDER_NOT_FOUND", `Order "${orderId}" was not found.`, 404);
     }
@@ -407,7 +424,11 @@ function createBillingService({
       version: order.version + 1,
     };
 
-    const updated = await repository.updateOrderIfVersion(orderId, order.version, nextOrder);
+    const updated = await activeRepository.updateOrderIfVersion(
+      orderId,
+      order.version,
+      nextOrder,
+    );
     if (!updated) {
       throw new BillingError(
         "ORDER_VERSION_CONFLICT",
@@ -416,7 +437,7 @@ function createBillingService({
       );
     }
 
-    await repository.insertOrderAction({
+    await activeRepository.insertOrderAction({
       id: createId("order_action"),
       orderId,
       referenceId,
@@ -452,7 +473,9 @@ function createBillingService({
     const toolKey = requireString(input?.toolKey, "toolKey");
     const actionKey = requireString(input?.actionKey, "actionKey");
     const tierKey = requireString(input?.tierKey, "tierKey");
-    const duplicate = await repository.findReservationByIdempotencyKey(idempotencyKey);
+    return runInTransaction(async (activeRepository) => {
+    const duplicate =
+      await activeRepository.findReservationByIdempotencyKey(idempotencyKey);
     if (duplicate) {
       assertDuplicate(
         duplicate,
@@ -469,12 +492,12 @@ function createBillingService({
       );
       return {
         reservation: duplicate,
-        account: await getCreditAccount({ accountId }),
+        account: await getCreditAccountWithRepository(activeRepository, accountId),
         duplicate: true,
       };
     }
 
-    const account = await getCreditAccount({ accountId });
+    const account = await getCreditAccountWithRepository(activeRepository, accountId);
     if (account.availableCredits < credits) {
       throw new BillingError(
         "INSUFFICIENT_AVAILABLE_CREDITS",
@@ -505,8 +528,8 @@ function createBillingService({
       releasedAt: null,
       version: 0,
     };
-    await repository.insertReservation(reservation);
-    await repository.insertLedgerEntry(
+    await activeRepository.insertReservation(reservation);
+    await activeRepository.insertLedgerEntry(
       buildLedgerEntry({
         id: createId("ledger"),
         accountId,
@@ -527,9 +550,10 @@ function createBillingService({
 
     return {
       reservation,
-      account: await getCreditAccount({ accountId }),
+      account: await getCreditAccountWithRepository(activeRepository, accountId),
       duplicate: false,
     };
+    });
   }
 
   async function commitCredits(input) {
@@ -546,7 +570,9 @@ function createBillingService({
     const idempotencyKey = requireIdempotencyKey(input?.idempotencyKey);
     const operation = requireLedgerOperation(input?.operation);
     const nextStatus = requireReservationStatus(input?.nextStatus, "nextStatus");
-    const existingEntry = await repository.findLedgerEntryByIdempotencyKey(idempotencyKey);
+    return runInTransaction(async (activeRepository) => {
+    const existingEntry =
+      await activeRepository.findLedgerEntryByIdempotencyKey(idempotencyKey);
     if (existingEntry) {
       assertDuplicate(
         existingEntry,
@@ -554,15 +580,18 @@ function createBillingService({
         pickRecordFields(existingEntry, ["reservationId", "referenceId", "operation"]),
         "LEDGER_IDEMPOTENCY_KEY_REUSED",
       );
-      const duplicateReservation = await repository.getReservation(reservationId);
+      const duplicateReservation = await activeRepository.getReservation(reservationId);
       return {
         reservation: duplicateReservation,
-        account: await getCreditAccount({ accountId: duplicateReservation.accountId }),
+        account: await getCreditAccountWithRepository(
+          activeRepository,
+          duplicateReservation.accountId,
+        ),
         duplicate: true,
       };
     }
 
-    const reservation = await repository.getReservation(reservationId);
+    const reservation = await activeRepository.getReservation(reservationId);
     if (!reservation) {
       throw new BillingError(
         "RESERVATION_NOT_FOUND",
@@ -594,7 +623,7 @@ function createBillingService({
       releasedAt: nextStatus === "released" ? timestamp : reservation.releasedAt,
       version: reservation.version + 1,
     };
-    const updated = await repository.updateReservationIfVersion(
+    const updated = await activeRepository.updateReservationIfVersion(
       reservationId,
       reservation.version,
       nextReservation,
@@ -620,7 +649,7 @@ function createBillingService({
             consumedDelta: 0,
           };
 
-    await repository.insertLedgerEntry(
+    await activeRepository.insertLedgerEntry(
       buildLedgerEntry({
         id: createId("ledger"),
         accountId: reservation.accountId,
@@ -639,12 +668,96 @@ function createBillingService({
 
     return {
       reservation: nextReservation,
-      account: await getCreditAccount({ accountId: reservation.accountId }),
+      account: await getCreditAccountWithRepository(
+        activeRepository,
+        reservation.accountId,
+      ),
       duplicate: false,
     };
+    });
+  }
+
+  async function settlePaidOrder(input) {
+    const orderId = requireString(input?.orderId, "orderId");
+    const referenceId = requireReferenceId(input?.referenceId);
+    const requestId = requireString(input?.requestId, "requestId");
+    const providerOrderId = input?.providerOrderId || null;
+
+    return runInTransaction(async (activeRepository) => {
+      let order = await activeRepository.getOrder(orderId);
+      if (!order) {
+        throw new BillingError("ORDER_NOT_FOUND", `Order "${orderId}" was not found.`, 404);
+      }
+      if (order.referenceId !== referenceId) {
+        throw new BillingError(
+          "ORDER_REFERENCE_MISMATCH",
+          "referenceId must remain stable across order lifecycle transitions.",
+          409,
+        );
+      }
+      if (["closed", "refund_pending", "refunded"].includes(order.status)) {
+        throw new BillingError(
+          "PAYMENT_EVENT_CONFLICT",
+          `Order "${order.id}" is ${order.status} and cannot settle payment success.`,
+          409,
+        );
+      }
+
+      if (order.status === "created") {
+        order = (
+          await transitionOrderStatusWithRepository(activeRepository, {
+            orderId,
+            referenceId,
+            providerOrderId,
+            nextStatus: "pending",
+            idempotencyKey: `order.pending:${referenceId}:payment:${providerOrderId || requestId}`,
+          })
+        ).order;
+      }
+      if (order.status === "pending") {
+        order = (
+          await transitionOrderStatusWithRepository(activeRepository, {
+            orderId,
+            referenceId,
+            providerOrderId,
+            nextStatus: "paid",
+            idempotencyKey: `order.paid:${referenceId}:${requestId}`,
+          })
+        ).order;
+      }
+
+      const purchase = await recordDirectCreditEntryWithRepository(activeRepository, {
+        accountId: order.accountId,
+        orderId: order.id,
+        referenceType: "order",
+        referenceId,
+        operation: "purchase",
+        credits: order.credits,
+        idempotencyKey: `ledger.purchase:${referenceId}:${requestId}`,
+        metadata: input?.metadata || null,
+      });
+
+      if (order.status === "paid") {
+        order = (
+          await transitionOrderStatusWithRepository(activeRepository, {
+            orderId,
+            referenceId,
+            providerOrderId,
+            nextStatus: "fulfilled",
+            idempotencyKey: `order.fulfilled:${referenceId}:${requestId}`,
+          })
+        ).order;
+      }
+
+      return { order, entry: purchase.entry, account: purchase.account };
+    });
   }
 
   async function recordDirectCreditEntry(input) {
+    return recordDirectCreditEntryWithRepository(repository, input);
+  }
+
+  async function recordDirectCreditEntryWithRepository(activeRepository, input) {
     const operation = requireLedgerOperation(input?.operation);
     if (!["purchase", "grant", "refund", "adjustment", "expire"].includes(operation)) {
       throw new BillingError(
@@ -654,7 +767,8 @@ function createBillingService({
     }
     const accountId = requireString(input?.accountId, "accountId");
     const idempotencyKey = requireIdempotencyKey(input?.idempotencyKey);
-    const duplicate = await repository.findLedgerEntryByIdempotencyKey(idempotencyKey);
+    const duplicate =
+      await activeRepository.findLedgerEntryByIdempotencyKey(idempotencyKey);
     const direction = operation === "expire" ? -1 : 1;
     const credits = requirePositiveInteger(input?.credits, "credits");
     const expected = {
@@ -671,7 +785,11 @@ function createBillingService({
         pickRecordFields(duplicate, ["accountId", "referenceId", "operation", "credits"]),
         "LEDGER_IDEMPOTENCY_KEY_REUSED",
       );
-      return { entry: duplicate, account: await getCreditAccount({ accountId }), duplicate: true };
+      return {
+        entry: duplicate,
+        account: await getCreditAccountWithRepository(activeRepository, accountId),
+        duplicate: true,
+      };
     }
 
     const entry = buildLedgerEntry({
@@ -690,16 +808,29 @@ function createBillingService({
       metadata: input?.metadata || null,
       createdAt: now(),
     });
-    await repository.insertLedgerEntry(entry);
-    return { entry, account: await getCreditAccount({ accountId }), duplicate: false };
+    await activeRepository.insertLedgerEntry(entry);
+    return {
+      entry,
+      account: await getCreditAccountWithRepository(activeRepository, accountId),
+      duplicate: false,
+    };
   }
 
   async function getCreditAccount({ accountId }) {
     const normalizedAccountId = requireString(accountId, "accountId");
-    const entries = await repository.listLedgerEntriesByAccount(
-      normalizedAccountId,
-    );
-    return calculateCreditAccount(normalizedAccountId, entries);
+    return getCreditAccountWithRepository(repository, normalizedAccountId);
+  }
+
+  async function getCreditAccountWithRepository(activeRepository, accountId) {
+    const entries = await activeRepository.listLedgerEntriesByAccount(accountId);
+    return calculateCreditAccount(accountId, entries);
+  }
+
+  async function runInTransaction(work) {
+    if (typeof repository.runInTransaction === "function") {
+      return repository.runInTransaction(work);
+    }
+    return work(repository);
   }
 
   return {
@@ -719,8 +850,27 @@ function createBillingService({
     purchaseCredits,
     releaseCredits,
     reserveCredits,
+    settlePaidOrder,
     transitionOrderStatus,
   };
+}
+
+function snapshotInMemoryRepository(repository) {
+  return {
+    creditPackages: new Map(repository.creditPackages),
+    orders: new Map(repository.orders),
+    orderCreateKeys: new Map(repository.orderCreateKeys),
+    orderActions: new Map(repository.orderActions),
+    orderActionKeys: new Map(repository.orderActionKeys),
+    ledgerEntries: new Map(repository.ledgerEntries),
+    ledgerKeys: new Map(repository.ledgerKeys),
+    reservations: new Map(repository.reservations),
+    reservationKeys: new Map(repository.reservationKeys),
+  };
+}
+
+function restoreInMemoryRepository(repository, snapshot) {
+  Object.assign(repository, snapshot);
 }
 
 function calculateCreditAccount(accountId, entries) {

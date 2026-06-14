@@ -247,3 +247,74 @@ test("reusing an idempotencyKey with inconsistent payload returns conflict", asy
       error.status === 409,
   );
 });
+
+test("reserve transaction rolls back reservation when ledger insert fails", async () => {
+  const repository = new FailingLedgerRepository("reserve");
+  const service = createBillingService({ repository });
+  await purchase(service);
+  const referenceId = buildReferenceId({ scope: "ai_run", id: "run-reserve-failure" });
+
+  await assert.rejects(() =>
+    service.reserveCredits({
+      accountId: "acct-1",
+      referenceId,
+      toolKey: "journey-map",
+      actionKey: "proposal",
+      tierKey: "standard",
+      credits: 15,
+      idempotencyKey: key("credit.reserve", referenceId, "req-failure"),
+    }),
+  );
+
+  assert.equal(repository.reservations.size, 0);
+  assert.equal(
+    [...repository.ledgerEntries.values()].some((entry) => entry.operation === "reserve"),
+    false,
+  );
+});
+
+test("commit transaction restores active reservation when ledger insert fails", async () => {
+  const repository = new FailingLedgerRepository();
+  const service = createBillingService({ repository });
+  await purchase(service);
+  const referenceId = buildReferenceId({ scope: "ai_run", id: "run-commit-failure" });
+  const reserved = await service.reserveCredits({
+    accountId: "acct-1",
+    referenceId,
+    toolKey: "journey-map",
+    actionKey: "proposal",
+    tierKey: "standard",
+    credits: 15,
+    idempotencyKey: key("credit.reserve", referenceId, "req-reserve"),
+  });
+  repository.failedOperation = "commit";
+
+  await assert.rejects(() =>
+    service.commitCredits({
+      reservationId: reserved.reservation.id,
+      referenceId,
+      idempotencyKey: key("credit.commit", referenceId, "req-failure"),
+    }),
+  );
+
+  assert.equal(repository.reservations.get(reserved.reservation.id).status, "reserved");
+  assert.equal(repository.reservations.get(reserved.reservation.id).version, 0);
+  assert.equal(
+    [...repository.ledgerEntries.values()].some((entry) => entry.operation === "commit"),
+    false,
+  );
+});
+
+class FailingLedgerRepository extends InMemoryBillingRepository {
+  constructor(failedOperation = null) {
+    super();
+    this.failedOperation = failedOperation;
+  }
+
+  async insertLedgerEntry(record) {
+    if (record.operation === this.failedOperation) {
+      throw new Error(`Injected ${record.operation} ledger failure.`);
+    }
+    return super.insertLedgerEntry(record);
+  }
+}

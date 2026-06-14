@@ -11,8 +11,7 @@ const {
   createBillingIntegrationService,
 } = require("./payment-integration.cjs");
 
-function createHarness({ providers, seed } = {}) {
-  const repository = new InMemoryBillingRepository(seed);
+function createHarness({ providers, seed, repository = new InMemoryBillingRepository(seed) } = {}) {
   const now = (() => {
     let tick = 0;
     return () => `2026-06-07T00:10:0${tick++}.000Z`;
@@ -257,6 +256,7 @@ test("verified success callback settles order and duplicate callback does not do
   await integration.createPaymentIntent({
     orderId: order.id,
     referenceId: order.referenceId,
+    callbackUrl: "https://example.com/api/payments/callback",
     idempotencyKey: buildIdempotencyKey({
       scope: "payment.intent",
       referenceId: order.referenceId,
@@ -715,3 +715,83 @@ test("queryRefundStatus fails when refund result referenceId does not match the 
   );
   assert.equal(repository.orders.get(order.id).status, "refund_pending");
 });
+
+test("payment settlement rolls paid state back when purchase ledger insert fails", async () => {
+  const provider = {
+    async createPayment({ order, referenceId }) {
+      return {
+        provider: "mockpay",
+        providerPaymentId: `provider-${order.id}`,
+        referenceId,
+        status: "requires_action",
+        providerStatus: "WAITING",
+        amountValue: order.amountValue,
+        currency: order.currency,
+      };
+    },
+    async queryPayment({ order }) {
+      return {
+        provider: "mockpay",
+        providerPaymentId: `provider-${order.id}`,
+        providerEventId: "evt-purchase-failure",
+        referenceId: order.referenceId,
+        status: "succeeded",
+        providerStatus: "SUCCESS",
+        amountValue: order.amountValue,
+        currency: order.currency,
+      };
+    },
+    async verifyCallback() {
+      throw new Error("not needed");
+    },
+    async createRefund() {
+      throw new Error("not needed");
+    },
+    async queryRefund() {
+      throw new Error("not needed");
+    },
+  };
+  const repository = new PurchaseFailingRepository();
+  const { billingService, integration } = createHarness({
+    providers: { mockpay: provider },
+    repository,
+  });
+  const order = await createOrder(billingService, "order-purchase-failure");
+  await integration.createPaymentIntent({
+    orderId: order.id,
+    referenceId: order.referenceId,
+    callbackUrl: "https://example.com/api/payments/callback",
+    idempotencyKey: buildIdempotencyKey({
+      scope: "payment.intent",
+      referenceId: order.referenceId,
+      requestId: "req-intent",
+    }),
+  });
+
+  await assert.rejects(() =>
+    integration.queryPaymentStatus({
+      orderId: order.id,
+      referenceId: order.referenceId,
+      idempotencyKey: buildIdempotencyKey({
+        scope: "payment.query",
+        referenceId: order.referenceId,
+        requestId: "req-query-failure",
+      }),
+    }),
+  );
+
+  assert.equal(repository.orders.get(order.id).status, "pending");
+  assert.equal(
+    [...repository.ledgerEntries.values()].some((entry) => entry.operation === "purchase"),
+    false,
+  );
+});
+
+class PurchaseFailingRepository extends InMemoryBillingRepository {
+  async insertLedgerEntry(record) {
+    if (record.operation === "purchase") {
+      throw new Error("Injected purchase ledger failure.");
+    }
+    return super.insertLedgerEntry(record);
+  }
+}

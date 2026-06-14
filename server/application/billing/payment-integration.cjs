@@ -293,77 +293,37 @@ function createBillingIntegrationService({
   }
 
   async function settlePaymentSuccess({ order, paymentStatus, requestId, source }) {
-    let currentOrder = order;
-    if (["closed", "refund_pending", "refunded"].includes(currentOrder.status)) {
+    if (["closed", "refund_pending", "refunded"].includes(order.status)) {
       throw new BillingError(
         "PAYMENT_EVENT_CONFLICT",
-        `Order "${currentOrder.id}" is ${currentOrder.status} and cannot settle payment success.`,
+        `Order "${order.id}" is ${order.status} and cannot settle payment success.`,
         409,
       );
     }
 
     assertProviderPaymentBinding(
-      currentOrder,
+      order,
       paymentStatus.providerPaymentId,
       "Payment settlement does not match the bound provider payment id.",
     );
 
-    if (currentOrder.status === "created") {
-      currentOrder = (
-        await billingService.markOrderPending({
-          orderId: currentOrder.id,
-          referenceId: currentOrder.referenceId,
-          providerOrderId: paymentStatus.providerPaymentId || currentOrder.providerOrderId,
-          idempotencyKey: buildIdempotencyKey({
-            scope: "order.pending",
-            referenceId: currentOrder.referenceId,
-            requestId: `payment:${paymentStatus.providerPaymentId || requestId}`,
-          }),
-        })
-      ).order;
-    }
-
-    if (currentOrder.status === "pending") {
-      currentOrder = (
-        await billingService.markOrderPaid({
-          orderId: currentOrder.id,
-          referenceId: currentOrder.referenceId,
-          providerOrderId: paymentStatus.providerPaymentId || currentOrder.providerOrderId,
-          idempotencyKey: buildIdempotencyKey({
-            scope: "order.paid",
-            referenceId: currentOrder.referenceId,
-            requestId,
-          }),
-        })
-      ).order;
-    }
-
-    const purchase = await ensurePurchaseGranted(currentOrder, paymentStatus, requestId, source);
-
-    if (currentOrder.status === "paid") {
-      currentOrder = (
-        await billingService.fulfillOrder({
-          orderId: currentOrder.id,
-          referenceId: currentOrder.referenceId,
-          idempotencyKey: buildIdempotencyKey({
-            scope: "order.fulfilled",
-            referenceId: currentOrder.referenceId,
-            requestId,
-          }),
-        })
-      ).order;
-    } else if (currentOrder.status === "fulfilled" && !purchase.entry) {
-      throw new BillingError(
-        "ORDER_FULFILLED_WITHOUT_LEDGER",
-        `Order "${currentOrder.id}" is fulfilled but purchase ledger entry is missing.`,
-        409,
-      );
-    }
+    const settled = await billingService.settlePaidOrder({
+      orderId: order.id,
+      referenceId: order.referenceId,
+      providerOrderId: paymentStatus.providerPaymentId || order.providerOrderId,
+      requestId,
+      metadata: {
+        provider: order.provider,
+        providerPaymentId: paymentStatus.providerPaymentId || order.providerOrderId || null,
+        providerEventId: paymentStatus.providerEventId || null,
+        source,
+      },
+    });
 
     return {
-      order: currentOrder,
-      ledgerEntry: purchase.entry,
-      account: purchase.account,
+      order: settled.order,
+      ledgerEntry: settled.entry,
+      account: settled.account,
       paymentStatus,
       source,
     };

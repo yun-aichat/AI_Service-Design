@@ -265,7 +265,7 @@ verified callback or verified query
 `createBillingService()` 当前输出：
 
 - 积分商品：`createCreditPackage`、`getCreditPackage`、`listCreditPackages`
-- 订单：`createOrder` 与订单状态迁移动作
+- 订单：`createOrder`、订单状态迁移动作、`settlePaidOrder`
 - 入账：`purchaseCredits`、`grantCredits`
 - AI 结算：`reserveCredits`、`commitCredits`、`releaseCredits`
 - 账户：`getCreditAccount`
@@ -276,8 +276,39 @@ Repository port 当前包括：
 - 订单与订单动作读写
 - reservation 读写与版本更新
 - ledger entry 幂等查询、写入与账户维度列表
+- `runInTransaction(work)`，向 application 层提供同一事务内的 repository 视图
 
-正式持久化实现需要用数据库事务或等价原子机制保证 reservation、ledger 和订单状态的一致性。
+application 层负责声明事务边界，repository 继续保持单集合读写职责。
+
+### CloudBase 集合与约束
+
+CloudBase billing repository 使用以下服务端集合：
+
+| 集合 | 文档主键 | 必需唯一索引 |
+|---|---|---|
+| `credit_packages` | `packageId` | `_id` |
+| `billing_orders` | `order.id` | `_id`, `idempotencyKey` |
+| `billing_order_actions` | `action.id` | `_id`, `idempotencyKey` |
+| `credit_reservations` | `reservation.id` | `_id`, `idempotencyKey` |
+| `credit_ledger` | `entry.id` | `_id`, `idempotencyKey` |
+
+订单与 reservation 的 `version` 从 `0` 开始。更新必须使用
+`id + expectedVersion` 条件更新，并且只在恰好更新一条文档时返回成功。
+
+单条 insert 依赖 `_id` 与 `idempotencyKey` 唯一索引避免并发重复写。repository
+会在写前查询并把同一幂等键重试返回为 `null`，同时将数据库唯一索引冲突归一化为
+领域重复语义。
+
+以下多记录流程由 `createBillingService()` 通过 `runInTransaction()` 原子编排：
+
+- 创建 reservation 与写入 `reserve` ledger entry。
+- 更新 reservation 与写入 `commit` / `release` ledger entry。
+- 订单进入 paid、写入 purchase ledger、订单进入 fulfilled。
+
+`CloudBaseBillingRepository` 优先使用 database client 的 `runTransaction`；
+对于暴露 `startTransaction` 的 SDK 版本，则使用 transaction repository 并显式
+`commit` / `rollback`。如果 client 不提供任何事务 API，服务会直接失败，不会降级为
+非原子多步写。唯一索引和乐观锁继续负责幂等与并发保护，但不替代跨集合事务。
 
 ## 当前状态
 
@@ -289,11 +320,11 @@ Repository port 当前包括：
 - AI 调用前预占、成功确认、失败释放
 - 重复请求幂等与不一致 payload 冲突测试
 - manual provider 与支付结果绑定校验
+- CloudBase reservation / ledger 与 paid / purchase / fulfilled 跨集合事务编排
 
 未完成：
 
 - 微信支付 / 支付宝真实适配器
-- CloudBase 正式持久化仓储与事务
 - 已发放积分在退款后的自动回收策略
 - 部分退款与多次退款
 - AI orchestration 对本服务的正式调用接线
