@@ -257,6 +257,37 @@ test("runInTransaction rolls all collection writes back on failure", async () =>
   assert.equal(await repository.getReservation("reservation-rollback"), null);
 });
 
+test("runInTransaction supports startTransaction SDKs", async () => {
+  const { repository } = createRepository({ transactionMode: "startTransaction" });
+
+  await repository.runInTransaction(async (transactionRepository) => {
+    await transactionRepository.insertReservation({
+      id: "reservation-start-tx",
+      accountId: "acct-1",
+      idempotencyKey: "reserve-start-tx",
+      version: 0,
+    });
+    await transactionRepository.insertLedgerEntry({
+      id: "ledger-start-tx",
+      accountId: "acct-1",
+      idempotencyKey: "ledger-start-tx",
+      operation: "reserve",
+    });
+  });
+
+  assert.ok(await repository.getReservation("reservation-start-tx"));
+  assert.ok(await repository.findLedgerEntryByIdempotencyKey("ledger-start-tx"));
+});
+
+test("runInTransaction fails fast when CloudBase exposes no transaction API", async () => {
+  const { repository } = createRepository({ transactionMode: "none" });
+
+  await assert.rejects(
+    () => repository.runInTransaction(async () => {}),
+    /does not expose transaction support/,
+  );
+});
+
 test("listLedgerEntriesByAccount reads more than 250 entries across pages", async () => {
   const totalEntries = 251;
   const entries = Array.from({ length: totalEntries }, (_, index) =>
@@ -435,7 +466,11 @@ function createFakeDatabase(options = {}) {
       if (!store) throw new Error(`Unknown collection "${name}".`);
       return createFakeCollection(store, queryLog, options);
     },
-    async runTransaction(work) {
+  };
+
+  const transactionMode = options.transactionMode || "runTransaction";
+  if (transactionMode === "runTransaction") {
+    database.runTransaction = async (work) => {
       const transactionStores = cloneStores(stores);
       const transactionDatabase = createFakeDatabaseFromStores(
         transactionStores,
@@ -443,15 +478,21 @@ function createFakeDatabase(options = {}) {
         options,
       );
       const result = await work(transactionDatabase);
-      for (const [name, transactionStore] of Object.entries(transactionStores)) {
-        stores[name].clear();
-        for (const [id, record] of transactionStore) {
-          stores[name].set(id, cloneJson(record));
-        }
-      }
+      commitStores(stores, transactionStores);
       return result;
-    },
-  };
+    };
+  } else if (transactionMode === "startTransaction") {
+    database.startTransaction = async () => {
+      const transactionStores = cloneStores(stores);
+      return createFakeStartTransaction(
+        transactionStores,
+        stores,
+        queryLog,
+        options,
+      );
+    };
+  }
+
   return database;
 }
 
@@ -465,6 +506,22 @@ function createFakeDatabaseFromStores(stores, queryLog, options = {}) {
   };
 }
 
+function createFakeStartTransaction(transactionStores, targetStores, queryLog, options = {}) {
+  return {
+    collection(name) {
+      const store = transactionStores[name];
+      if (!store) throw new Error(`Unknown collection "${name}".`);
+      return createFakeCollection(store, queryLog, options);
+    },
+    async commit() {
+      commitStores(targetStores, transactionStores);
+    },
+    async rollback() {
+      return undefined;
+    },
+  };
+}
+
 function cloneStores(stores) {
   return Object.fromEntries(
     Object.entries(stores).map(([name, store]) => [
@@ -472,6 +529,15 @@ function cloneStores(stores) {
       new Map([...store].map(([id, record]) => [id, cloneJson(record)])),
     ]),
   );
+}
+
+function commitStores(targetStores, sourceStores) {
+  for (const [name, sourceStore] of Object.entries(sourceStores)) {
+    targetStores[name].clear();
+    for (const [id, record] of sourceStore) {
+      targetStores[name].set(id, cloneJson(record));
+    }
+  }
 }
 
 function createFakeCollection(store, queryLog, options = {}) {

@@ -452,17 +452,21 @@ function createBillingService({
   }
 
   async function purchaseCredits(input) {
-    return recordDirectCreditEntry({
-      ...input,
-      operation: "purchase",
-    });
+    return runInTransaction((activeRepository) =>
+      recordDirectCreditEntryWithRepository(activeRepository, {
+        ...input,
+        operation: "purchase",
+      }),
+    );
   }
 
   async function grantCredits(input) {
-    return recordDirectCreditEntry({
-      ...input,
-      operation: input?.operation || "grant",
-    });
+    return runInTransaction((activeRepository) =>
+      recordDirectCreditEntryWithRepository(activeRepository, {
+        ...input,
+        operation: input?.operation || "grant",
+      }),
+    );
   }
 
   async function reserveCredits(input) {
@@ -753,10 +757,6 @@ function createBillingService({
     });
   }
 
-  async function recordDirectCreditEntry(input) {
-    return recordDirectCreditEntryWithRepository(repository, input);
-  }
-
   async function recordDirectCreditEntryWithRepository(activeRepository, input) {
     const operation = requireLedgerOperation(input?.operation);
     if (!["purchase", "grant", "refund", "adjustment", "expire"].includes(operation)) {
@@ -837,7 +837,11 @@ function createBillingService({
     if (typeof repository.runInTransaction === "function") {
       return repository.runInTransaction(work);
     }
-    return work(repository);
+    throw new BillingError(
+      "TRANSACTION_SUPPORT_REQUIRED",
+      "Billing repository must expose runInTransaction() for atomic billing flows.",
+      500,
+    );
   }
 
   return {

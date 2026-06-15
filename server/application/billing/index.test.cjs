@@ -349,6 +349,95 @@ test("commit transaction restores active reservation when ledger insert fails", 
   );
 });
 
+test("release transaction restores active reservation when ledger insert fails", async () => {
+  const repository = new FailingLedgerRepository();
+  const service = createBillingService({ repository });
+  await purchase(service);
+  const referenceId = buildReferenceId({ scope: "ai_run", id: "run-release-failure" });
+  const reserved = await service.reserveCredits({
+    accountId: "acct-1",
+    referenceId,
+    toolKey: "journey-map",
+    actionKey: "analysis",
+    tierKey: "deep",
+    credits: 20,
+    idempotencyKey: key("credit.reserve", referenceId, "req-reserve"),
+  });
+  repository.failedOperation = "release";
+
+  await assert.rejects(() =>
+    service.releaseCredits({
+      reservationId: reserved.reservation.id,
+      referenceId,
+      idempotencyKey: key("credit.release", referenceId, "req-failure"),
+    }),
+  );
+
+  assert.equal(repository.reservations.get(reserved.reservation.id).status, "reserved");
+  assert.equal(repository.reservations.get(reserved.reservation.id).version, 0);
+  assert.equal(
+    [...repository.ledgerEntries.values()].some((entry) => entry.operation === "release"),
+    false,
+  );
+});
+
+test("settlePaidOrder rolls paid and purchase state back when fulfilled transition fails", async () => {
+  const repository = new FulfillmentFailingRepository();
+  const service = createBillingService({ repository });
+  await seedPackage(service);
+  const referenceId = buildReferenceId({ scope: "order", id: "ord-fulfill-failure" });
+  const created = await service.createOrder({
+    orderId: "order-fulfill-failure",
+    accountId: "acct-1",
+    packageId: "starter-100",
+    provider: "mockpay",
+    referenceId,
+    idempotencyKey: key("order.create", referenceId, "req-create"),
+  });
+  await service.markOrderPending({
+    orderId: created.order.id,
+    referenceId,
+    providerOrderId: "provider-order-fulfill-failure",
+    idempotencyKey: key("order.pending", referenceId, "req-pending"),
+  });
+
+  await assert.rejects(() =>
+    service.settlePaidOrder({
+      orderId: created.order.id,
+      referenceId,
+      providerOrderId: "provider-order-fulfill-failure",
+      requestId: "req-settle",
+    }),
+  );
+
+  assert.equal(repository.orders.get(created.order.id).status, "pending");
+  assert.equal(
+    [...repository.ledgerEntries.values()].some((entry) => entry.operation === "purchase"),
+    false,
+  );
+});
+
+test("billing service refuses atomic billing flows when repository lacks transactions", async () => {
+  const repository = createNonTransactionalRepository();
+  const service = createBillingService({ repository });
+
+  await assert.rejects(
+    () =>
+      service.purchaseCredits({
+        accountId: "acct-1",
+        orderId: "order-no-tx",
+        referenceType: "order",
+        referenceId: buildReferenceId({ scope: "order", id: "order-no-tx" }),
+        credits: 10,
+        idempotencyKey: "credit.purchase:order:order-no-tx:req-1",
+      }),
+    (error) =>
+      error instanceof BillingError &&
+      error.code === "TRANSACTION_SUPPORT_REQUIRED" &&
+      error.status === 500,
+  );
+});
+
 class FailingLedgerRepository extends InMemoryBillingRepository {
   constructor(failedOperation = null) {
     super();
@@ -361,4 +450,25 @@ class FailingLedgerRepository extends InMemoryBillingRepository {
     }
     return super.insertLedgerEntry(record);
   }
+}
+
+class FulfillmentFailingRepository extends InMemoryBillingRepository {
+  async updateOrderIfVersion(orderId, expectedVersion, nextRecord) {
+    if (nextRecord.status === "fulfilled") {
+      throw new Error("Injected fulfilled transition failure.");
+    }
+    return super.updateOrderIfVersion(orderId, expectedVersion, nextRecord);
+  }
+}
+
+function createNonTransactionalRepository(seed) {
+  const base = new InMemoryBillingRepository(seed);
+  const repository = {};
+
+  for (const name of Object.getOwnPropertyNames(InMemoryBillingRepository.prototype)) {
+    if (name === "constructor" || name === "runInTransaction") continue;
+    repository[name] = base[name].bind(base);
+  }
+
+  return repository;
 }
