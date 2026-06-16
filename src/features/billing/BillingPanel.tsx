@@ -18,15 +18,22 @@ import { LedgerHistory } from "./LedgerHistory";
 const LEDGER_PAGE_SIZE = 10;
 
 export function BillingPanel() {
-  const { session, loading: authLoading, error: authError } = useAuth();
+  const { auth, session, loading: authLoading, error: authError } = useAuth();
   const [account, setAccount] = useState<CreditAccount | null>(null);
   const [packages, setPackages] = useState<CreditPackage[]>([]);
   const [ledgerPage, setLedgerPage] = useState<PageResult<CreditLedgerEntry> | null>(null);
   const [billingLoading, setBillingLoading] = useState(false);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [anonymousSigningIn, setAnonymousSigningIn] = useState(false);
+  const [acceptanceLoginAttempted, setAcceptanceLoginAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
   const [ledgerOffset, setLedgerOffset] = useState(0);
+  const anonymousAuth = getAnonymousAuth(auth);
+  const searchParams = new URLSearchParams(window.location.search);
+  const acceptanceAnonymousLogin =
+    import.meta.env.DEV && searchParams.get("acceptanceAnonymousLogin") === "1";
+  const initialLedgerOffset = parseLedgerOffset(searchParams.get("acceptanceLedgerOffset"));
 
   const loadBillingData = useCallback(async () => {
     if (!session) return;
@@ -67,14 +74,42 @@ export function BillingPanel() {
   useEffect(() => {
     if (!session) return;
     void loadBillingData();
-    void loadLedgerPage(0);
-  }, [session, loadBillingData, loadLedgerPage]);
+    void loadLedgerPage(initialLedgerOffset);
+  }, [initialLedgerOffset, session, loadBillingData, loadLedgerPage]);
+
+  useEffect(() => {
+    if (
+      session ||
+      !acceptanceAnonymousLogin ||
+      !anonymousAuth ||
+      acceptanceLoginAttempted
+    ) {
+      return;
+    }
+    setAcceptanceLoginAttempted(true);
+    setAnonymousSigningIn(true);
+    setError(null);
+    void anonymousAuth
+      .signInAnonymously()
+      .catch((reason) => {
+        setError(getErrorMessage(reason, "匿名登录失败。"));
+      })
+      .finally(() => {
+        setAnonymousSigningIn(false);
+      });
+  }, [
+    acceptanceAnonymousLogin,
+    acceptanceLoginAttempted,
+    anonymousAuth,
+    session,
+  ]);
 
   if (authLoading) {
     return <LoadingCard message="正在恢复登录状态..." />;
   }
 
   if (!session) {
+    const canUseAnonymousAuth = import.meta.env.DEV && !!anonymousAuth;
     return (
       <Box
         bg="bg.surface"
@@ -98,10 +133,34 @@ export function BillingPanel() {
           >
             前往登录
           </Button>
+          {canUseAnonymousAuth ? (
+            <Button
+              alignSelf="start"
+              disabled={anonymousSigningIn}
+              onClick={() => void signInForAcceptance()}
+              size="sm"
+            >
+              {anonymousSigningIn ? "登录中..." : "本地联调匿名登录"}
+            </Button>
+          ) : null}
+          {error ? <Text color="status.errorFg" fontSize="sm">{error}</Text> : null}
           {authError ? <Text color="status.errorFg" fontSize="sm">{authError}</Text> : null}
         </Stack>
       </Box>
     );
+  }
+
+  async function signInForAcceptance() {
+    if (!anonymousAuth) return;
+    setAnonymousSigningIn(true);
+    setError(null);
+    try {
+      await anonymousAuth.signInAnonymously();
+    } catch (reason) {
+      setError(getErrorMessage(reason, "匿名登录失败。"));
+    } finally {
+      setAnonymousSigningIn(false);
+    }
   }
 
   return (
@@ -222,4 +281,21 @@ function getErrorMessage(reason: unknown, fallback: string) {
     return "登录已失效，请重新登录后再查看积分。";
   }
   return reason instanceof Error ? reason.message : fallback;
+}
+
+function parseLedgerOffset(value: string | null) {
+  if (!value) return 0;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function getAnonymousAuth(auth: unknown) {
+  if (
+    auth &&
+    typeof auth === "object" &&
+    typeof (auth as { signInAnonymously?: unknown }).signInAnonymously === "function"
+  ) {
+    return auth as { signInAnonymously(): Promise<unknown> };
+  }
+  return null;
 }

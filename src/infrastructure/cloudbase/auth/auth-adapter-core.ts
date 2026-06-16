@@ -33,6 +33,9 @@ type CloudBaseResult<T> = Promise<{ data: T; error?: unknown }>;
 
 export type CloudBaseAuthClient = {
   getSession(): CloudBaseResult<{ session?: unknown }>;
+  signInAnonymously?: (
+    input?: Record<string, unknown>
+  ) => CloudBaseResult<{ session?: unknown }>;
   signInWithOtp(input: Record<string, unknown>): CloudBaseResult<{
     verifyOtp?: (input: Record<string, unknown>) => CloudBaseResult<{ session?: unknown }>;
   }>;
@@ -195,6 +198,24 @@ export class CloudBaseAuthAdapter implements AuthPort {
         },
       };
     }, "验证码发送失败。");
+  }
+
+  async signInAnonymously() {
+    return withAuthError(async () => {
+      if (typeof this.auth.signInAnonymously !== "function") {
+        throw new AuthPortError("当前认证客户端不支持匿名登录。", "UNSUPPORTED");
+      }
+      const { data, error } = await this.auth.signInAnonymously({});
+      if (error) throw error;
+      const session = toAuthSession(data.session);
+      if (!session) {
+        throw new AuthPortError(
+          "匿名登录成功，但未建立用户会话。",
+          "SESSION_MISSING"
+        );
+      }
+      return session;
+    }, "匿名登录失败。");
   }
 
   async signOut() {
