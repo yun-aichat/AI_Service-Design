@@ -1,5 +1,8 @@
 const { ASSISTANT_USAGE_EVENT } = require("./protocol.cjs");
 
+const DEFAULT_ASSISTANT_ACTION_KEY = "proposal";
+const DEFAULT_ASSISTANT_TIER_KEY = "standard";
+
 function createNoopAssistantUsageRecorder() {
   return {
     async recordGenerated() {
@@ -43,6 +46,7 @@ function createToolDocumentAssistantUsageRecorder({
             ? inputTokens + outputTokens
             : null;
       const responsePhase = response ? response.phase || null : null;
+      const usageKeys = resolveUsageKeys(request);
 
       let toolResult = null;
       if (hasToolDocumentWriter) {
@@ -65,9 +69,9 @@ function createToolDocumentAssistantUsageRecorder({
                 0,
               ),
               model,
-              toolKey: request.toolKey || null,
-              actionKey: request.actionKey || null,
-              tierKey: request.tierKey || null,
+              toolKey: usageKeys.toolKey,
+              actionKey: usageKeys.actionKey,
+              tierKey: usageKeys.tierKey,
               inputTokens,
               outputTokens,
               totalTokens,
@@ -83,9 +87,9 @@ function createToolDocumentAssistantUsageRecorder({
         try {
           const result = await billingConfigService.listAiModelPolicies({
             user: { id: "system" },
-            toolKey: request.toolKey,
-            actionKey: request.actionKey,
-            tierKey: request.tierKey,
+            toolKey: usageKeys.toolKey,
+            actionKey: usageKeys.actionKey,
+            tierKey: usageKeys.tierKey,
             enabled: true,
             limit: 1,
           });
@@ -98,9 +102,9 @@ function createToolDocumentAssistantUsageRecorder({
               userId: user.id,
               projectId: request.document.projectId,
               documentId: request.document.documentId,
-              toolKey: request.toolKey,
-              actionKey: request.actionKey,
-              tierKey: request.tierKey,
+              toolKey: usageKeys.toolKey,
+              actionKey: usageKeys.actionKey,
+              tierKey: usageKeys.tierKey,
               provider,
               model: model || "unknown",
               inputTokens,
@@ -120,7 +124,30 @@ function createToolDocumentAssistantUsageRecorder({
   };
 }
 
+function resolveUsageKeys(request) {
+  const toolKey =
+    request?.toolKey ||
+    request?.toolId ||
+    request?.document?.toolId ||
+    null;
+  const actionKey =
+    request?.actionKey ||
+    (request?.context?.usageEventCandidate === ASSISTANT_USAGE_EVENT
+      ? DEFAULT_ASSISTANT_ACTION_KEY
+      : null);
+  const tierKey = request?.tierKey || DEFAULT_ASSISTANT_TIER_KEY;
+
+  return {
+    toolKey,
+    actionKey,
+    tierKey,
+  };
+}
+
 module.exports = {
+  DEFAULT_ASSISTANT_ACTION_KEY,
+  DEFAULT_ASSISTANT_TIER_KEY,
   createNoopAssistantUsageRecorder,
   createToolDocumentAssistantUsageRecorder,
+  resolveUsageKeys,
 };

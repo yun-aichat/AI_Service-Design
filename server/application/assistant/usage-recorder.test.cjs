@@ -93,6 +93,75 @@ test("assistant usage recorder writes structured billing usage events", async ()
   });
 });
 
+test("assistant usage recorder derives billing usage keys from the real journey request shape", async () => {
+  const repository = new InMemoryBillingConfigRepository({
+    aiModelPolicies: {
+      "journey-map:proposal:standard": {
+        id: "journey-map:proposal:standard",
+        policyId: "journey-map:proposal:standard",
+        toolKey: "journey-map",
+        actionKey: "proposal",
+        tierKey: "standard",
+        provider: "openai",
+        model: "gpt-5-mini",
+        temperature: 0.4,
+        maxInputTokens: 8000,
+        maxOutputTokens: 2000,
+        timeoutMs: 30000,
+        enabled: true,
+        createdAt: "2026-06-16T00:00:00.000Z",
+        updatedAt: "2026-06-16T00:00:00.000Z",
+      },
+    },
+  });
+  const billingConfigService = createBillingConfigService({
+    repository,
+    now: () => "2026-06-16T00:00:00.000Z",
+  });
+  const recorder = createToolDocumentAssistantUsageRecorder({
+    toolDocumentService: {
+      async recordUsageEvent() {
+        return {};
+      },
+    },
+    billingConfigService,
+  });
+
+  await recorder.recordGenerated({
+    request: {
+      scope: "tool",
+      toolId: "journey-map",
+      skillId: "journey-map-editor",
+      skillVersion: "1.0.0",
+      document: {
+        toolId: "journey-map",
+        projectId: "project-1",
+        documentId: "doc-1",
+        revision: 3,
+      },
+      context: {
+        serviceName: "门店预约服务",
+        toolName: "Journey Map",
+        toolContext: { title: "门店预约服务用户旅程图" },
+        usageEventCandidate: "ai_generated",
+      },
+      messages: [{ id: "message-1", role: "user", content: "请先确认目标用户。" }],
+    },
+    response: { phase: "proposal" },
+    user: regularUser,
+    model: "gpt-5-mini",
+    usage: { inputTokens: 200, outputTokens: 50 },
+    runId: "run-real-shape",
+  });
+
+  const result = await billingConfigService.listAiUsageEvents({ user: adminUser });
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].toolKey, "journey-map");
+  assert.equal(result.items[0].actionKey, "proposal");
+  assert.equal(result.items[0].tierKey, "standard");
+  assert.equal(result.items[0].provider, "openai");
+});
+
 test("assistant usage recorder marks failed generations without blocking tool usage writes", async () => {
   const repository = new InMemoryBillingConfigRepository();
   const billingConfigService = createBillingConfigService({

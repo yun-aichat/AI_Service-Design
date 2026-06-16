@@ -8,6 +8,7 @@ const { createAssistantService } = require("./application/assistant/service.cjs"
 const {
   createToolDocumentAssistantUsageRecorder,
 } = require("./application/assistant/usage-recorder.cjs");
+const { getBillingConfigService } = require("./billing-config.cjs");
 const { service: toolDocumentService } = require("./tool-documents.cjs");
 
 let assistantService = null;
@@ -23,17 +24,28 @@ async function handleJourneyChat(payload, options = {}) {
   }
 }
 
-function getAssistantService() {
+function getAssistantService(overrides = {}) {
   if (!assistantService) {
+    const resolvedModelProvider =
+      overrides.modelProvider || createGlmAssistantModelProvider();
+    const resolvedToolDocumentService =
+      overrides.toolDocumentService || toolDocumentService;
+    const resolvedBillingConfigService =
+      overrides.billingConfigService || getBillingConfigService();
+
     assistantService = createAssistantService({
-      modelProvider: createGlmAssistantModelProvider(),
+      modelProvider: resolvedModelProvider,
       usageRecorder: createToolDocumentAssistantUsageRecorder({
-        toolDocumentService,
-        billingConfigService,
+        toolDocumentService: resolvedToolDocumentService,
+        billingConfigService: resolvedBillingConfigService,
       }),
     });
   }
   return assistantService;
+}
+
+function resetAssistantServiceForTests() {
+  assistantService = null;
 }
 
 async function readJsonBody(req) {
@@ -77,4 +89,9 @@ async function authenticateRequest(request) {
   return new CloudBaseAccessTokenVerifier().verify(token);
 }
 
-module.exports = { handleJourneyChat, nodeHandler };
+module.exports = {
+  getAssistantService,
+  handleJourneyChat,
+  nodeHandler,
+  resetAssistantServiceForTests,
+};
