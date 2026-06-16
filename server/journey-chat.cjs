@@ -8,7 +8,7 @@ const { createAssistantService } = require("./application/assistant/service.cjs"
 const {
   createToolDocumentAssistantUsageRecorder,
 } = require("./application/assistant/usage-recorder.cjs");
-const { service: toolDocumentService } = require("./tool-documents.cjs");
+const { getToolDocumentService } = require("./tool-documents.cjs");
 
 let assistantService = null;
 
@@ -28,7 +28,7 @@ function getAssistantService() {
     assistantService = createAssistantService({
       modelProvider: createGlmAssistantModelProvider(),
       usageRecorder: createToolDocumentAssistantUsageRecorder({
-        toolDocumentService,
+        toolDocumentService: getToolDocumentService(),
       }),
     });
   }

@@ -1,28 +1,18 @@
 const {
-  InMemoryToolDocumentRepository,
   PersistenceError,
   createToolDocumentService,
 } = require("./application/tool-documents.cjs");
+const {
+  CloudBaseToolDocumentRepository,
+} = require("./infrastructure/cloudbase/tool-documents/repository.cjs");
 
-const repository = new InMemoryToolDocumentRepository();
-const service = createToolDocumentService({
-  repository,
-  validateContent(toolId, content) {
-    if (toolId !== "journey-map") return content;
-    if (typeof content !== "object" || content === null) {
-      throw new PersistenceError(
-        "INVALID_JOURNEY_MAP",
-        "Journey Map content must be an object.",
-      );
-    }
-    return content;
-  },
-});
+let cachedService = null;
 
 async function handleToolDocuments(request) {
   const user = await authenticateRequest(request);
   const body = await readJsonBody(request);
   const action = body?.action;
+  const service = getToolDocumentService();
 
   switch (action) {
     case "listProjects":
@@ -63,6 +53,44 @@ async function handleToolDocuments(request) {
         404,
       );
   }
+}
+
+function getToolDocumentService() {
+  if (cachedService) return cachedService;
+
+  const database = resolveCloudBaseDatabase();
+  cachedService = createToolDocumentService({
+    repository: new CloudBaseToolDocumentRepository(database),
+    validateContent(toolId, content) {
+      if (toolId !== "journey-map") return content;
+      if (typeof content !== "object" || content === null) {
+        throw new PersistenceError(
+          "INVALID_JOURNEY_MAP",
+          "Journey Map content must be an object.",
+        );
+      }
+      return content;
+    },
+  });
+  return cachedService;
+}
+
+function resolveCloudBaseDatabase() {
+  if (globalThis.__cloudbaseDatabase) {
+    return globalThis.__cloudbaseDatabase;
+  }
+  if (globalThis.tcb && typeof globalThis.tcb.database === "function") {
+    return globalThis.tcb.database();
+  }
+  if (globalThis.cloudbase && typeof globalThis.cloudbase.database === "function") {
+    return globalThis.cloudbase.database();
+  }
+
+  throw new PersistenceError(
+    "CLOUDBASE_DATABASE_UNAVAILABLE",
+    "CloudBase database client is not configured for tool document APIs.",
+    500,
+  );
 }
 
 async function authenticateRequest(request) {
@@ -126,8 +154,8 @@ function sendJson(response, status, body) {
 }
 
 module.exports = {
+  getToolDocumentService,
   handleToolDocuments,
   nodeHandler,
-  repository,
-  service,
+  resolveCloudBaseDatabase,
 };
