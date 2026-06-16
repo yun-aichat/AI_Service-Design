@@ -20,20 +20,35 @@ function createAssistantService({
       const request = normalizeAssistantRequest(input);
       const systemPrompt = buildSystemPrompt(request, readSkill(request.skillId));
       const providerMessages = request.messages.map(toProviderMessage);
-      const completion = await modelProvider.generateJson({
-        systemPrompt,
-        messages: providerMessages,
-      });
-      const response = parseAssistantModelResponse(completion.content);
+      try {
+        const completion = await modelProvider.generateJson({
+          systemPrompt,
+          messages: providerMessages,
+        });
+        const response = parseAssistantModelResponse(completion.content);
 
-      await recorder.recordGenerated({
-        request,
-        response,
-        user: options.user || null,
-        model: completion.model || null,
-      });
+        await recorder.recordGenerated({
+          request,
+          response,
+          user: options.user || null,
+          model: completion.model || null,
+          usage: completion.usage || null,
+          runId: completion.runId || completion.raw?.id || null,
+        });
 
-      return response;
+        return response;
+      } catch (error) {
+        await recorder.recordGenerated({
+          request,
+          response: null,
+          user: options.user || null,
+          model: null,
+          usage: null,
+          runId: null,
+          error: error instanceof Error ? error.message : String(error),
+        }).catch(() => null);
+        throw error;
+      }
     },
   };
 }

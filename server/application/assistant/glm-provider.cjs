@@ -45,6 +45,17 @@ function createGlmAssistantModelProvider({
         content: data?.choices?.[0]?.message?.content || "",
         raw: data,
         model,
+        runId: data?.id || null,
+        usage: {
+          inputTokens:
+            typeof data?.usage?.prompt_tokens === "number" ? data.usage.prompt_tokens : null,
+          outputTokens:
+            typeof data?.usage?.completion_tokens === "number"
+              ? data.usage.completion_tokens
+              : null,
+          totalTokens:
+            typeof data?.usage?.total_tokens === "number" ? data.usage.total_tokens : null,
+        },
       };
     },
   };

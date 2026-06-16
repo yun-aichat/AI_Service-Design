@@ -1,6 +1,30 @@
 const DEFAULT_ENV_ID = "yunwuwei-d0gqca7d478fcf658";
 const DEFAULT_REGION = "ap-shanghai";
 
+function normalizeRoles(groups, appMetadataRoles) {
+  const roles = new Set();
+
+  if (Array.isArray(groups)) {
+    for (const group of groups) {
+      if (typeof group === "string" && group) {
+        roles.add(group);
+      } else if (group && typeof group === "object" && typeof group.id === "string" && group.id) {
+        roles.add(group.id);
+      }
+    }
+  }
+
+  if (Array.isArray(appMetadataRoles)) {
+    for (const role of appMetadataRoles) {
+      if (typeof role === "string" && role) {
+        roles.add(role);
+      }
+    }
+  }
+
+  return [...roles];
+}
+
 export class CloudBaseAccessTokenVerifier {
   constructor({
     envId = process.env.CLOUDBASE_ENV_ID || DEFAULT_ENV_ID,
@@ -27,9 +51,7 @@ export class CloudBaseAccessTokenVerifier {
       email: profile.email || null,
       phone: profile.phone_number || null,
       displayName: profile.name || profile.username || null,
-      roles: Array.isArray(profile.groups)
-        ? profile.groups.map((group) => (typeof group === "string" ? group : group.id)).filter(Boolean)
-        : [],
+      roles: normalizeRoles(profile.groups, profile.app_metadata?.roles),
     };
   }
 }

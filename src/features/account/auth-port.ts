@@ -7,6 +7,7 @@ export type AuthUser = {
   displayName: string | null;
   avatarUrl: string | null;
   isAnonymous: boolean;
+  roles: string[];
 };
 
 export type AuthSession = {

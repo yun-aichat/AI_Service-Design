@@ -29,6 +29,7 @@ function getAssistantService() {
       modelProvider: createGlmAssistantModelProvider(),
       usageRecorder: createToolDocumentAssistantUsageRecorder({
         toolDocumentService,
+        billingConfigService,
       }),
     });
   }

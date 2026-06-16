@@ -281,12 +281,49 @@ function createBillingConfigService({
     };
   }
 
+  async function recordAiUsageEvent(input = {}) {
+    const record = validateAiUsageEvent(input.record || {});
+    const eventId = record.id || `${record.referenceId}:${record.status}`;
+    const timestamp = now();
+    const totalTokens =
+      typeof record.totalTokens === "number"
+        ? record.totalTokens
+        : typeof record.inputTokens === "number" && typeof record.outputTokens === "number"
+          ? record.inputTokens + record.outputTokens
+          : null;
+
+    const nextRecord = {
+      id: eventId,
+      userId: record.userId || null,
+      projectId: record.projectId || null,
+      documentId: record.documentId || null,
+      toolKey: record.toolKey,
+      actionKey: record.actionKey,
+      tierKey: record.tierKey,
+      provider: record.provider,
+      model: record.model,
+      inputTokens: typeof record.inputTokens === "number" ? record.inputTokens : null,
+      outputTokens: typeof record.outputTokens === "number" ? record.outputTokens : null,
+      totalTokens,
+      estimatedCostValue:
+        typeof record.estimatedCostValue === "number" ? record.estimatedCostValue : null,
+      chargedCredits: typeof record.chargedCredits === "number" ? record.chargedCredits : 0,
+      status: record.status,
+      referenceId: record.referenceId,
+      createdAt: timestamp,
+    };
+
+    await repository.upsertRecord(COLLECTIONS.aiUsageEvents, eventId, nextRecord);
+    return nextRecord;
+  }
+
   return {
     listAiActionPricing,
     listAiModelPolicies,
     listAiUsageEvents,
     listCreditLedger,
     listCreditPackages,
+    recordAiUsageEvent,
     upsertAiActionPricing,
     upsertAiModelPolicy,
     upsertCreditPackage,
@@ -377,6 +414,54 @@ function validateAiModelPolicy(input) {
     enabled: requireBoolean(input.enabled, "record.enabled"),
     description: optionalString(input.description),
     metadata: cloneJson(input.metadata || null),
+  };
+}
+
+function validateAiUsageEvent(record) {
+  if (!record || typeof record !== "object") {
+    throw new BillingConfigError("INVALID_INPUT", "record must be a non-null object.");
+  }
+
+  const status = requireString(record.status, "record.status");
+  if (!["started", "succeeded", "failed", "cancelled"].includes(status)) {
+    throw new BillingConfigError(
+      "INVALID_INPUT",
+      "record.status must be one of: started, succeeded, failed, cancelled.",
+    );
+  }
+
+  return {
+    id: optionalString(record.id),
+    userId: optionalString(record.userId),
+    projectId: optionalString(record.projectId),
+    documentId: optionalString(record.documentId),
+    toolKey: requireString(record.toolKey, "record.toolKey"),
+    actionKey: requireString(record.actionKey, "record.actionKey"),
+    tierKey: requireString(record.tierKey, "record.tierKey"),
+    provider: requireString(record.provider, "record.provider"),
+    model: requireString(record.model, "record.model"),
+    inputTokens:
+      record.inputTokens === undefined || record.inputTokens === null
+        ? null
+        : requireNonNegativeInteger(record.inputTokens, "record.inputTokens"),
+    outputTokens:
+      record.outputTokens === undefined || record.outputTokens === null
+        ? null
+        : requireNonNegativeInteger(record.outputTokens, "record.outputTokens"),
+    totalTokens:
+      record.totalTokens === undefined || record.totalTokens === null
+        ? null
+        : requireNonNegativeInteger(record.totalTokens, "record.totalTokens"),
+    estimatedCostValue:
+      record.estimatedCostValue === undefined || record.estimatedCostValue === null
+        ? null
+        : requireFiniteNumber(record.estimatedCostValue, "record.estimatedCostValue"),
+    chargedCredits:
+      record.chargedCredits === undefined || record.chargedCredits === null
+        ? 0
+        : requireNonNegativeInteger(record.chargedCredits, "record.chargedCredits"),
+    status,
+    referenceId: requireString(record.referenceId, "record.referenceId"),
   };
 }
 

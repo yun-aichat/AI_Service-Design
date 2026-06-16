@@ -27,7 +27,10 @@ test("CloudBaseAccessTokenVerifier maps a verified profile", async () => {
           email: "user@example.com",
           phone_number: "+8613800138000",
           name: "Test User",
-          groups: [{ id: "member" }],
+          groups: [{ id: "member" }, "billing-admin"],
+          app_metadata: {
+            roles: ["admin"],
+          },
         }),
         { status: 200 },
       );
@@ -39,7 +42,7 @@ test("CloudBaseAccessTokenVerifier maps a verified profile", async () => {
     email: "user@example.com",
     phone: "+8613800138000",
     displayName: "Test User",
-    roles: ["member"],
+    roles: ["member", "billing-admin", "admin"],
   });
 });
 

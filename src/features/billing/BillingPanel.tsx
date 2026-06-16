@@ -168,6 +168,16 @@ export function BillingPanel() {
                 <Text>已登录账号：</Text>
                 <Text color="fg.default" fontWeight="medium">{session.user.email || session.user.phone || session.user.id}</Text>
               </HStack>
+              {session.user.roles.some((role) => role === "admin" || role === "billing-admin") ? (
+                <Button
+                  alignSelf="start"
+                  onClick={() => { window.location.href = "/admin/billing"; }}
+                  size="sm"
+                  variant="outline"
+                >
+                  打开 Billing Admin
+                </Button>
+              ) : null}
             </Stack>
           </Box>
         </Stack>

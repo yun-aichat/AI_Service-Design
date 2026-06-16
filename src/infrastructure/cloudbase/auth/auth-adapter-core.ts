@@ -14,6 +14,10 @@ type CloudBaseUser = {
   phone?: unknown;
   phone_number?: unknown;
   is_anonymous?: unknown;
+  groups?: unknown;
+  app_metadata?: {
+    roles?: unknown;
+  };
   user_metadata?: {
     nickName?: unknown;
     name?: unknown;
@@ -70,9 +74,37 @@ function optionalString(value: unknown) {
   return typeof value === "string" && value ? value : null;
 }
 
+function normalizeRoles(groups: unknown, appMetadataRoles: unknown): string[] {
+  const roles = new Set<string>();
+
+  if (Array.isArray(groups)) {
+    for (const group of groups) {
+      if (typeof group === "string" && group) {
+        roles.add(group);
+      } else if (
+        group &&
+        typeof group === "object" &&
+        typeof group.id === "string" &&
+        group.id
+      ) {
+        roles.add(group.id);
+      }
+    }
+  }
+
+  if (Array.isArray(appMetadataRoles)) {
+    for (const role of appMetadataRoles) {
+      if (typeof role === "string" && role) roles.add(role);
+    }
+  }
+
+  return [...roles];
+}
+
 function toAuthUser(input: unknown): AuthUser {
   const user = (input && typeof input === "object" ? input : {}) as CloudBaseUser;
   const metadata = user.user_metadata || {};
+  const roles = normalizeRoles(user.groups, user.app_metadata?.roles);
   return {
     id: String(user.id || user.sub || ""),
     email: optionalString(user.email),
@@ -83,6 +115,7 @@ function toAuthUser(input: unknown): AuthUser {
       optionalString(metadata.username),
     avatarUrl: optionalString(metadata.avatarUrl) || optionalString(metadata.picture),
     isAnonymous: Boolean(user.is_anonymous),
+    roles,
   };
 }
 

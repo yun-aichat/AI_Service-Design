@@ -52,7 +52,12 @@ test("restores a valid session and treats an expired session as signed out", asy
   const validSession = {
     access_token: "token",
     expires_in: 7200,
-    user: { id: "user-1", email: "user@example.com" },
+    user: {
+      id: "user-1",
+      email: "user@example.com",
+      groups: ["billing-admin"],
+      app_metadata: { roles: ["admin"] },
+    },
   };
   const adapter = new CloudBaseAuthAdapter(
     createClient({
@@ -60,6 +65,7 @@ test("restores a valid session and treats an expired session as signed out", asy
     })
   );
   assert.deepEqual(await adapter.getSession(), toAuthSession(validSession));
+  assert.deepEqual(toAuthSession(validSession).user.roles, ["billing-admin", "admin"]);
 
   const expiredAdapter = new CloudBaseAuthAdapter(
     createClient({ getSession: async () => ({ data: { session: null } }) })
