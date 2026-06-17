@@ -44,6 +44,7 @@ coverage/
 .plugin-staging/
 .roundtable/
 .roundtable-lite/
+.worktrees/
 
 # Python
 __pycache__/
