@@ -98,6 +98,7 @@ export function BillingPanel() {
           >
             前往登录
           </Button>
+          {error ? <Text color="status.errorFg" fontSize="sm">{error}</Text> : null}
           {authError ? <Text color="status.errorFg" fontSize="sm">{authError}</Text> : null}
         </Stack>
       </Box>

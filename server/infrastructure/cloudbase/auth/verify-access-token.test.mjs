@@ -14,11 +14,10 @@ test("readBearerToken accepts Bearer authorization headers", () => {
 test("CloudBaseAccessTokenVerifier maps a verified profile", async () => {
   const verifier = new CloudBaseAccessTokenVerifier({
     envId: "env-test",
-    region: "ap-shanghai",
     fetchImpl: async (url, options) => {
       assert.equal(
         url,
-        "https://env-test.ap-shanghai.tcb-api.tencentcloudapi.com/auth/v1/user/me",
+        "https://env-test.api.tcloudbasegateway.com/auth/v1/user/me",
       );
       assert.equal(options.headers.Authorization, "Bearer valid-token");
       return new Response(
@@ -52,4 +51,25 @@ test("CloudBaseAccessTokenVerifier returns null for rejected tokens", async () =
   });
   assert.equal(await verifier.verify("expired-token"), null);
   assert.equal(await verifier.verify(""), null);
+});
+
+test("CloudBaseAccessTokenVerifier accepts user_id when sub is absent", async () => {
+  const verifier = new CloudBaseAccessTokenVerifier({
+    fetchImpl: async () =>
+      new Response(
+        JSON.stringify({
+          user_id: "anonymous-user-1",
+          groups: [],
+        }),
+        { status: 200 },
+      ),
+  });
+
+  assert.deepEqual(await verifier.verify("anon-token"), {
+    id: "anonymous-user-1",
+    email: null,
+    phone: null,
+    displayName: null,
+    roles: [],
+  });
 });

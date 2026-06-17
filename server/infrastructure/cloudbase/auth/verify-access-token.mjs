@@ -28,10 +28,9 @@ function normalizeRoles(groups, appMetadataRoles) {
 export class CloudBaseAccessTokenVerifier {
   constructor({
     envId = process.env.CLOUDBASE_ENV_ID || DEFAULT_ENV_ID,
-    region = process.env.CLOUDBASE_REGION || DEFAULT_REGION,
     fetchImpl = fetch,
   } = {}) {
-    this.baseUrl = `https://${envId}.${region}.tcb-api.tencentcloudapi.com/auth/v1`;
+    this.baseUrl = `https://${envId}.api.tcloudbasegateway.com/auth/v1`;
     this.fetch = fetchImpl;
   }
 
@@ -46,8 +45,12 @@ export class CloudBaseAccessTokenVerifier {
     }
 
     const profile = await response.json();
+    const userId = profile.sub || profile.user_id;
+    if (!userId) {
+      throw new Error("CloudBase identity verification response did not include a user id.");
+    }
     return {
-      id: String(profile.sub),
+      id: String(userId),
       email: profile.email || null,
       phone: profile.phone_number || null,
       displayName: profile.name || profile.username || null,
