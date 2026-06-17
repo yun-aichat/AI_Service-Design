@@ -6,9 +6,16 @@ const {
 } = require("./application/assistant/protocol.cjs");
 const { createAssistantService } = require("./application/assistant/service.cjs");
 const {
+  createAssistantBillingService,
+  createBillingService,
+} = require("./application/billing/index.cjs");
+const {
   createToolDocumentAssistantUsageRecorder,
 } = require("./application/assistant/usage-recorder.cjs");
 const { getBillingConfigService } = require("./billing-config.cjs");
+const {
+  CloudBaseBillingRepository,
+} = require("./infrastructure/cloudbase/billing/repository.cjs");
 const { service: toolDocumentService } = require("./tool-documents.cjs");
 
 let assistantService = null;
@@ -34,6 +41,10 @@ function getAssistantService(overrides = {}) {
       overrides.billingConfigService || getBillingConfigService();
 
     assistantService = createAssistantService({
+      billingSettlement: createAssistantBillingService({
+        billingService: overrides.billingService || getBillingService(),
+        billingConfigService: resolvedBillingConfigService,
+      }),
       modelProvider: resolvedModelProvider,
       usageRecorder: createToolDocumentAssistantUsageRecorder({
         toolDocumentService: resolvedToolDocumentService,
@@ -44,8 +55,21 @@ function getAssistantService(overrides = {}) {
   return assistantService;
 }
 
+let billingService = null;
+
+function getBillingService() {
+  if (!billingService) {
+    const database = resolveCloudBaseDatabase();
+    billingService = createBillingService({
+      repository: new CloudBaseBillingRepository(database),
+    });
+  }
+  return billingService;
+}
+
 function resetAssistantServiceForTests() {
   assistantService = null;
+  billingService = null;
 }
 
 async function readJsonBody(req) {
@@ -89,7 +113,22 @@ async function authenticateRequest(request) {
   return new CloudBaseAccessTokenVerifier().verify(token);
 }
 
+function resolveCloudBaseDatabase() {
+  if (globalThis.__cloudbaseDatabase) {
+    return globalThis.__cloudbaseDatabase;
+  }
+  if (globalThis.tcb && typeof globalThis.tcb.database === "function") {
+    return globalThis.tcb.database();
+  }
+  if (globalThis.cloudbase && typeof globalThis.cloudbase.database === "function") {
+    return globalThis.cloudbase.database();
+  }
+
+  throw new Error("CloudBase database client is not configured for assistant billing.");
+}
+
 module.exports = {
+  getBillingService,
   getAssistantService,
   handleJourneyChat,
   nodeHandler,

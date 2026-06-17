@@ -171,3 +171,94 @@ test("assistant service writes ai_generated with document context when request c
   assert.equal(recordedCalls[0].revision, 3);
   assert.equal(recordedCalls[0].eventType, ASSISTANT_USAGE_EVENT);
 });
+
+test("assistant service reserves billing before generation and commits on proposal success", async () => {
+  const billingCalls = [];
+  const service = createAssistantService({
+    readSkill: () => "skill prompt",
+    modelProvider: {
+      async generateJson() {
+        return {
+          model: "glm-test",
+          content: JSON.stringify({
+            phase: "proposal",
+            message: "我整理了一版更新提案。",
+            proposal: {
+              summary: ["更新目标用户"],
+              journey: { title: "AI 更新版" },
+            },
+          }),
+        };
+      },
+    },
+    billingSettlement: {
+      async startRun(input) {
+        billingCalls.push({ type: "start", input });
+        return { runId: "assistant-run-1", reservationId: "reservation-1", referenceId: "ai_run:assistant-run-1" };
+      },
+      async finishRun(input) {
+        billingCalls.push({ type: "finish", input });
+        return { chargedCredits: 15 };
+      },
+    },
+  });
+
+  await service.handleRequest(request, { user: { id: "user-1" } });
+
+  assert.equal(billingCalls.length, 2);
+  assert.equal(billingCalls[0].type, "start");
+  assert.equal(billingCalls[1].type, "finish");
+  assert.equal(billingCalls[1].input.response.phase, "proposal");
+});
+
+test("assistant service releases billing reservations when generation ends in clarify or error", async () => {
+  const billingCalls = [];
+  const clarifyService = createAssistantService({
+    readSkill: () => "skill prompt",
+    modelProvider: {
+      async generateJson() {
+        return {
+          model: "glm-test",
+          content: JSON.stringify({
+            phase: "clarify",
+            message: "先确认目标用户。",
+            questions: ["服务主要面向谁？"],
+          }),
+        };
+      },
+    },
+    billingSettlement: {
+      async startRun() {
+        return { runId: "assistant-run-1", reservationId: "reservation-1", referenceId: "ai_run:assistant-run-1" };
+      },
+      async finishRun(input) {
+        billingCalls.push(input);
+        return { chargedCredits: 0 };
+      },
+    },
+  });
+
+  await clarifyService.handleRequest(request, { user: { id: "user-1" } });
+  assert.equal(billingCalls[0].response.phase, "clarify");
+
+  const errorService = createAssistantService({
+    readSkill: () => "skill prompt",
+    modelProvider: {
+      async generateJson() {
+        throw new Error("timeout");
+      },
+    },
+    billingSettlement: {
+      async startRun() {
+        return { runId: "assistant-run-2", reservationId: "reservation-2", referenceId: "ai_run:assistant-run-2" };
+      },
+      async finishRun(input) {
+        billingCalls.push(input);
+        return { chargedCredits: 0 };
+      },
+    },
+  });
+
+  await assert.rejects(() => errorService.handleRequest(request, { user: { id: "user-1" } }), /timeout/);
+  assert.equal(billingCalls[1].error, "timeout");
+});

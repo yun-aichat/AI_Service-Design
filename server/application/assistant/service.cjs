@@ -6,6 +6,7 @@ const { readAssistantSkill } = require("./skill-loader.cjs");
 
 function createAssistantService({
   modelProvider,
+  billingSettlement,
   usageRecorder,
   readSkill = readAssistantSkill,
 } = {}) {
@@ -20,12 +21,29 @@ function createAssistantService({
       const request = normalizeAssistantRequest(input);
       const systemPrompt = buildSystemPrompt(request, readSkill(request.skillId));
       const providerMessages = request.messages.map(toProviderMessage);
+      const billingRun =
+        options.user && billingSettlement?.startRun
+          ? await billingSettlement.startRun({
+              user: options.user,
+              request,
+            })
+          : null;
       try {
         const completion = await modelProvider.generateJson({
           systemPrompt,
           messages: providerMessages,
         });
         const response = parseAssistantModelResponse(completion.content);
+        const billingResult =
+          billingRun && billingSettlement?.finishRun
+            ? await billingSettlement.finishRun({
+                user: options.user || null,
+                request,
+                run: billingRun,
+                response,
+                error: null,
+              })
+            : null;
 
         await recorder.recordGenerated({
           request,
@@ -33,19 +51,31 @@ function createAssistantService({
           user: options.user || null,
           model: completion.model || null,
           usage: completion.usage || null,
-          runId: completion.runId || completion.raw?.id || null,
+          runId: billingRun?.runId || completion.runId || completion.raw?.id || null,
+          chargedCredits: billingResult?.chargedCredits ?? 0,
         });
 
         return response;
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (billingRun && billingSettlement?.finishRun) {
+          await billingSettlement.finishRun({
+            user: options.user || null,
+            request,
+            run: billingRun,
+            response: null,
+            error: message,
+          }).catch(() => null);
+        }
         await recorder.recordGenerated({
           request,
           response: null,
           user: options.user || null,
           model: null,
           usage: null,
-          runId: null,
-          error: error instanceof Error ? error.message : String(error),
+          runId: billingRun?.runId || null,
+          chargedCredits: 0,
+          error: message,
         }).catch(() => null);
         throw error;
       }

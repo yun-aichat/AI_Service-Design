@@ -8,9 +8,14 @@ const {
   buildOrderPurchaseIdempotencyKey,
   buildReferenceId,
   canTransitionOrderStatus,
+  createAssistantBillingService,
   createBillingService,
   InMemoryBillingRepository,
 } = require("./index.cjs");
+const {
+  createBillingConfigService,
+  InMemoryBillingConfigRepository,
+} = require("../billing-config.cjs");
 
 function createService(seed) {
   const repository = new InMemoryBillingRepository(seed);
@@ -26,6 +31,38 @@ function createService(seed) {
     })(),
   });
   return { repository, service };
+}
+
+function createAssistantBillingHarness({ billingSeed, pricingSeed } = {}) {
+  const { service: billingService } = createService(billingSeed);
+  const billingConfigService = createBillingConfigService({
+    repository: new InMemoryBillingConfigRepository({
+      aiActionPricing: pricingSeed || {
+        "journey-map:proposal:standard": {
+          id: "journey-map:proposal:standard",
+          pricingId: "journey-map:proposal:standard",
+          toolKey: "journey-map",
+          actionKey: "proposal",
+          tierKey: "standard",
+          displayName: "Journey Proposal Standard",
+          creditCost: 15,
+          enabled: true,
+          createdAt: "2026-06-14T00:00:00.000Z",
+          updatedAt: "2026-06-14T00:00:00.000Z",
+        },
+      },
+    }),
+    now: () => "2026-06-14T00:00:00.000Z",
+  });
+  const assistantBilling = createAssistantBillingService({
+    billingService,
+    billingConfigService,
+    createRunId: (() => {
+      let tick = 0;
+      return () => `assistant-run-${++tick}`;
+    })(),
+  });
+  return { assistantBilling, billingService, billingConfigService };
 }
 
 function key(scope, referenceId, requestId) {
@@ -436,6 +473,93 @@ test("billing service refuses atomic billing flows when repository lacks transac
       error.code === "TRANSACTION_SUPPORT_REQUIRED" &&
       error.status === 500,
   );
+});
+
+test("assistant billing service resolves action pricing and reserves credits for a journey run", async () => {
+  const { assistantBilling, billingService } = createAssistantBillingHarness();
+  await purchase(billingService, "user-1", 100);
+
+  const result = await assistantBilling.startRun({
+    user: { id: "user-1" },
+    request: {
+      toolId: "journey-map",
+      skillId: "journey-map-editor",
+      document: { toolId: "journey-map" },
+    },
+  });
+
+  assert.equal(result.creditCost, 15);
+  assert.equal(result.toolKey, "journey-map");
+  assert.equal(result.actionKey, "proposal");
+  assert.equal(result.tierKey, "standard");
+  assert.equal(result.referenceId, "ai_run:assistant-run-1");
+  assert.equal(result.account.availableCredits, 85);
+  assert.equal(result.account.reservedCredits, 15);
+});
+
+test("assistant billing service commits reserved credits when the assistant returns a proposal", async () => {
+  const { assistantBilling, billingService } = createAssistantBillingHarness();
+  await purchase(billingService, "user-1", 100);
+  const run = await assistantBilling.startRun({
+    user: { id: "user-1" },
+    request: {
+      toolId: "journey-map",
+      document: { toolId: "journey-map" },
+    },
+  });
+
+  const settled = await assistantBilling.finishRun({
+    user: { id: "user-1" },
+    run,
+    response: { phase: "proposal" },
+  });
+
+  assert.equal(settled.reservation.status, "committed");
+  assert.equal(settled.account.availableCredits, 85);
+  assert.equal(settled.account.reservedCredits, 0);
+  assert.equal(settled.account.consumedCredits, 15);
+  assert.equal(settled.chargedCredits, 15);
+});
+
+test("assistant billing service releases reserved credits for clarify and error outcomes", async () => {
+  const { assistantBilling, billingService } = createAssistantBillingHarness();
+  await purchase(billingService, "user-1", 100);
+  const clarifyRun = await assistantBilling.startRun({
+    user: { id: "user-1" },
+    request: {
+      toolId: "journey-map",
+      document: { toolId: "journey-map" },
+    },
+  });
+
+  const clarified = await assistantBilling.finishRun({
+    user: { id: "user-1" },
+    run: clarifyRun,
+    response: { phase: "clarify" },
+  });
+
+  assert.equal(clarified.reservation.status, "released");
+  assert.equal(clarified.account.availableCredits, 100);
+  assert.equal(clarified.account.reservedCredits, 0);
+  assert.equal(clarified.chargedCredits, 0);
+
+  const errorRun = await assistantBilling.startRun({
+    user: { id: "user-1" },
+    request: {
+      toolId: "journey-map",
+      document: { toolId: "journey-map" },
+    },
+  });
+
+  const failed = await assistantBilling.finishRun({
+    user: { id: "user-1" },
+    run: errorRun,
+    error: "timeout",
+  });
+
+  assert.equal(failed.reservation.status, "released");
+  assert.equal(failed.account.availableCredits, 100);
+  assert.equal(failed.chargedCredits, 0);
 });
 
 class FailingLedgerRepository extends InMemoryBillingRepository {

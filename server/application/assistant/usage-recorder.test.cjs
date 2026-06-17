@@ -67,6 +67,7 @@ test("assistant usage recorder writes structured billing usage events", async ()
       inputTokens: 1200,
       outputTokens: 300,
     },
+    chargedCredits: 15,
     runId: "run-1",
   });
 
@@ -86,7 +87,7 @@ test("assistant usage recorder writes structured billing usage events", async ()
     outputTokens: 300,
     totalTokens: 1500,
     estimatedCostValue: null,
-    chargedCredits: 0,
+    chargedCredits: 15,
     status: "succeeded",
     referenceId: "run-1",
     createdAt: "2026-06-16T00:00:00.000Z",

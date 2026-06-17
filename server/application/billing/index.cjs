@@ -866,6 +866,136 @@ function createBillingService({
   };
 }
 
+function createAssistantBillingService({
+  billingService,
+  billingConfigService,
+  createRunId = () => defaultCreateId("ai_run"),
+} = {}) {
+  if (!billingService) {
+    throw new BillingError(
+      "BILLING_SERVICE_REQUIRED",
+      "Assistant billing requires a billing service.",
+      500,
+    );
+  }
+  if (!billingConfigService?.listAiActionPricing) {
+    throw new BillingError(
+      "BILLING_CONFIG_REQUIRED",
+      "Assistant billing requires billing config pricing access.",
+      500,
+    );
+  }
+
+  async function getActionPricing({ user, request }) {
+    const resolvedUser = requireAssistantUser(user);
+    const keys = resolveAssistantBillingKeys(request);
+    const result = await billingConfigService.listAiActionPricing({
+      user: resolvedUser,
+      toolKey: keys.toolKey,
+      actionKey: keys.actionKey,
+      tierKey: keys.tierKey,
+      enabled: true,
+      limit: 1,
+      offset: 0,
+    });
+    const pricing = result?.items?.[0] || null;
+    if (!pricing) {
+      throw new BillingError(
+        "AI_ACTION_PRICING_NOT_FOUND",
+        `No enabled AI pricing was found for ${keys.toolKey}/${keys.actionKey}/${keys.tierKey}.`,
+        404,
+      );
+    }
+
+    return {
+      pricing,
+      ...keys,
+    };
+  }
+
+  async function startRun({ user, request }) {
+    const { pricing, toolKey, actionKey, tierKey } = await getActionPricing({
+      user,
+      request,
+    });
+    const runId = createRunId();
+    const referenceId = buildReferenceId({ scope: "ai_run", id: runId });
+    const reservationResult = await billingService.reserveCredits({
+      accountId: requireAssistantUser(user).id,
+      referenceId,
+      toolKey,
+      actionKey,
+      tierKey,
+      credits: pricing.creditCost,
+      idempotencyKey: buildIdempotencyKey({
+        scope: "credit.reserve",
+        referenceId,
+        requestId: "assistant-run",
+      }),
+      metadata: {
+        toolKey,
+        actionKey,
+        tierKey,
+      },
+    });
+
+    return {
+      runId,
+      referenceId,
+      reservationId: reservationResult.reservation.id,
+      creditCost: pricing.creditCost,
+      toolKey,
+      actionKey,
+      tierKey,
+      pricingId: pricing.pricingId,
+      reservation: reservationResult.reservation,
+      account: reservationResult.account,
+    };
+  }
+
+  async function finishRun({ run, response, error }) {
+    if (!run?.reservationId || !run?.referenceId) return null;
+    const shouldCommit = response?.phase === "proposal" && !error;
+    const result = shouldCommit
+      ? await billingService.commitCredits({
+          reservationId: run.reservationId,
+          referenceId: run.referenceId,
+          idempotencyKey: buildIdempotencyKey({
+            scope: "credit.commit",
+            referenceId: run.referenceId,
+            requestId: "assistant-run",
+          }),
+          metadata: {
+            phase: response?.phase || null,
+          },
+        })
+      : await billingService.releaseCredits({
+          reservationId: run.reservationId,
+          referenceId: run.referenceId,
+          idempotencyKey: buildIdempotencyKey({
+            scope: "credit.release",
+            referenceId: run.referenceId,
+            requestId: error ? "assistant-error" : `assistant-${response?.phase || "non_proposal"}`,
+          }),
+          metadata: {
+            phase: response?.phase || null,
+            error: error || null,
+          },
+        });
+
+    return {
+      ...result,
+      chargedCredits: shouldCommit ? run.creditCost : 0,
+    };
+  }
+
+  return {
+    finishRun,
+    getActionPricing,
+    startRun,
+  };
+}
+
 function snapshotInMemoryRepository(repository) {
   return {
     creditPackages: new Map(repository.creditPackages),
@@ -1042,6 +1172,29 @@ function defaultCreateId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+function resolveAssistantBillingKeys(request) {
+  return {
+    toolKey:
+      requireString(
+        request?.toolKey || request?.toolId || request?.document?.toolId,
+        "toolKey",
+      ),
+    actionKey: requireString(request?.actionKey || "proposal", "actionKey"),
+    tierKey: requireString(request?.tierKey || "standard", "tierKey"),
+  };
+}
+
+function requireAssistantUser(user) {
+  if (!user?.id) {
+    throw new BillingError(
+      "UNAUTHENTICATED",
+      "A signed-in user is required for assistant billing.",
+      401,
+    );
+  }
+  return user;
+}
+
 function requireCurrency(value) {
   const currency = requireString(value, "currency").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) {
@@ -1167,5 +1320,6 @@ module.exports = {
   buildCreditPackage,
   calculateCreditAccount,
   canTransitionOrderStatus,
+  createAssistantBillingService,
   createBillingService,
 };

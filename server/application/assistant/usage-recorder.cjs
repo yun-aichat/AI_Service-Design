@@ -30,6 +30,7 @@ function createToolDocumentAssistantUsageRecorder({
       usage = null,
       runId = null,
       error = null,
+      chargedCredits = 0,
     }) {
       if (!user?.id || !request?.document?.documentId || !request?.document?.projectId) {
         return null;
@@ -111,7 +112,7 @@ function createToolDocumentAssistantUsageRecorder({
               outputTokens,
               totalTokens,
               estimatedCostValue: null,
-              chargedCredits: 0,
+              chargedCredits,
               status: error ? "failed" : "succeeded",
               referenceId: runId || "unknown",
             },
