@@ -123,12 +123,12 @@ a {
 }
 
 .app-header {
-  height: 44px;
+  height: var(--app-shell-header-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  padding: 0 18px;
+  gap: var(--app-shell-header-gap);
+  padding: 0 var(--app-shell-header-padding-inline);
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--panel) 96%, var(--accent-soft));
 }
@@ -157,15 +157,15 @@ a {
 
 .top-actions {
   justify-content: flex-end;
-  gap: 2px;
+  gap: var(--app-shell-action-gap);
   overflow-x: auto;
 }
 
 .top-button,
 .icon-button {
-  min-height: 32px !important;
+  min-height: var(--app-shell-action-min-height) !important;
   border: 0 !important;
-  border-radius: 5px !important;
+  border-radius: var(--app-shell-action-radius) !important;
   background: transparent !important;
   color: var(--muted) !important;
   font-size: var(--text-micro) !important;
@@ -188,8 +188,8 @@ a {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  height: calc(100vh - 44px);
+  grid-template-columns: minmax(0, 1fr) var(--app-workspace-sidebar-width);
+  height: calc(100vh - var(--app-shell-header-height));
   min-height: 0;
 }
 
@@ -203,18 +203,18 @@ a {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 18px;
+  padding: var(--app-workspace-page-padding);
 }
 
 .input-panel {
   border-left: 1px solid var(--line);
   background: var(--panel);
-  padding: 18px;
+  padding: var(--app-workspace-page-padding);
 }
 
 .input-panel section + section {
-  margin-top: 28px;
-  padding-top: 24px;
+  margin-top: var(--app-workspace-section-gap);
+  padding-top: var(--app-workspace-section-padding-top);
   border-top: 1px solid var(--line-soft);
 }
 
@@ -228,7 +228,7 @@ a {
 }
 
 .panel-heading {
-  margin-bottom: 16px !important;
+  margin-bottom: var(--app-panel-heading-gap) !important;
 }
 
 .eyebrow {
@@ -242,7 +242,7 @@ a {
 
 .field-label {
   display: block;
-  margin-bottom: 14px;
+  margin-bottom: var(--app-field-gap);
   color: var(--muted);
   font-size: var(--text-micro);
   font-weight: var(--weight-regular);
@@ -251,7 +251,7 @@ a {
 
 .field-label > span {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: var(--app-field-label-gap);
 }
 
 .field-label input,

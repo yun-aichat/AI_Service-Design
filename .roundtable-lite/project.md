@@ -53,6 +53,7 @@
 - 2026-06-16：本仓库只使用 `.roundtable-lite/` 作为活跃协作状态；旧 `.roundtable/` 仅作为已迁移历史，不再继续使用。
 - 2026-06-16：标准开发流程为“一任务一分支，一分支一 linked worktree”；主工作区用于主持、审查、分诊和低风险文档维护，不作为常规功能开发工作区。
 - 2026-06-16：凡是出现 tracked files 异常缺失、跨模块混改或旧路径 `D:\knowledge\codex\design` 与当前工作区混用，先视为基线问题处理，再开始新任务。
+- 2026-06-16：任务 agent 在完成实现后，必须自行调用 Roundtable Lite 的 `submit` 或 `complete`。只有代码提交、没有任务状态流转，不算任务完成。
 
 ## Open Questions
 
@@ -67,5 +68,6 @@
 - 只能显式暂存本模块本轮修改的文件；禁止 `git add .` 和 `git add -A`。
 - 提交前检查 `git diff --cached`，不得包含用户已有改动、其他模块文件、密钥或构建产物。
 - 如果必须修改一个进入任务前已经脏的文件，不能直接整文件暂存；应通过 Roundtable 通知主持人处理基线或安全分块暂存。
-- `roundtable_submit` 必须记录 commit hash 和验证结果。
+- Roundtable Lite 任务在收尾时必须记录 commit hash、验证结果、changed files 和 diff summary。
+- `review_required=true` 的任务必须由实现 agent 调用 `submit` 进入 `review`；`review_required=false` 的任务必须由实现 agent 调用 `complete`。
 - 不执行远端 `git push`，除非用户或主持人明确要求。

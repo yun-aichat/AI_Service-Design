@@ -1,14 +1,22 @@
 # 设计 Token
 
-更新日期：2026-06-13
+更新日期：2026-06-16
 
 ## 原则
 
 - Chakra UI v3 提供组件、响应式、可访问状态和基础刻度。
 - `coss` 提供视觉语言，不复制其组件实现或 CSS 变量体系。
-- 固定色值只允许出现在 `src/design-system/theme.ts`。
+- Token 真源文件是 `src/design-system/design-tokens.json`，`src/design-system/theme.ts` 只负责把它映射到 Chakra 主题。
+- 固定色值只允许出现在 token 真源或专门的静态导出 token 分组中，业务组件和工具实现不得直接写值。
 - 业务组件必须使用 semantic token，禁止新增平行颜色体系。
 - 浅色与深色共享相同语义角色，通过 Chakra `_dark` 映射。
+
+## 真源结构
+
+- `theme.tokens`：基础刻度，如品牌色、字体、字号、圆角、动效、层级。
+- `theme.semanticTokens`：业务组件直接消费的语义 token。
+- `layout`：壳层与工作区尺寸，例如顶栏高度、侧栏宽度、区块间距。
+- `export`：静态导出物专用 token，例如 Journey Map SVG 的背景、边框和文字色。
 
 ## 核心颜色
 

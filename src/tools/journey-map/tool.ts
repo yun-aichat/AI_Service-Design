@@ -4,6 +4,7 @@ import type {
   ToolDocument,
   ToolExportArtifact,
 } from "../../domain/tool-runtime"
+import designTokens from "../../design-system/design-tokens.json"
 
 export type RowType = "text" | "image" | "emotion"
 
@@ -634,6 +635,7 @@ export function toCsv(journey: JourneyMap) {
 }
 
 export function toSvg(journey: JourneyMap) {
+  const exportTokens = designTokens.export.journeyMap
   const columnWidth = 240
   const labelWidth = 120
   const rowHeight = 132
@@ -655,25 +657,25 @@ export function toSvg(journey: JourneyMap) {
       .slice(0, 5)
       .map(
         (line, index) =>
-          `<text x="${x}" y="${y + index * 18}" font-size="13" fill="#202522">${escape(line)}</text>`,
+          `<text x="${x}" y="${y + index * 18}" font-size="13" fill="${exportTokens.cellFg}">${escape(line)}</text>`,
       )
       .join("")
   }
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`
-  svg += `<rect width="100%" height="100%" fill="#ffffff"/>`
-  svg += `<text x="24" y="34" font-size="22" font-weight="700" fill="#202522">${escape(journey.title)}</text>`
+  svg += `<rect width="100%" height="100%" fill="${exportTokens.canvasBg}"/>`
+  svg += `<text x="24" y="34" font-size="22" font-weight="700" fill="${exportTokens.titleFg}">${escape(journey.title)}</text>`
   journey.stages.forEach((stage, index) => {
     const x = labelWidth + index * columnWidth
-    svg += `<rect x="${x}" y="${headerHeight}" width="${columnWidth}" height="44" fill="#fff3e8" stroke="#deded9"/>`
-    svg += `<text x="${x + 14}" y="${headerHeight + 28}" font-size="15" font-weight="700" fill="#202522">${escape(stage.name)}</text>`
+    svg += `<rect x="${x}" y="${headerHeight}" width="${columnWidth}" height="44" fill="${exportTokens.stageHeaderBg}" stroke="${exportTokens.stageHeaderBorder}"/>`
+    svg += `<text x="${x + 14}" y="${headerHeight + 28}" font-size="15" font-weight="700" fill="${exportTokens.stageHeaderFg}">${escape(stage.name)}</text>`
   })
   journey.rows.forEach((row, rowIndex) => {
     const y = headerHeight + 44 + rowIndex * rowHeight
-    svg += `<rect x="0" y="${y}" width="${labelWidth}" height="${rowHeight}" fill="#f8f8f6" stroke="#deded9"/>`
-    svg += `<text x="18" y="${y + 30}" font-size="14" font-weight="700" fill="#66716b">${escape(row.title)}</text>`
+    svg += `<rect x="0" y="${y}" width="${labelWidth}" height="${rowHeight}" fill="${exportTokens.rowLabelBg}" stroke="${exportTokens.rowLabelBorder}"/>`
+    svg += `<text x="18" y="${y + 30}" font-size="14" font-weight="700" fill="${exportTokens.rowLabelFg}">${escape(row.title)}</text>`
     journey.stages.forEach((stage, index) => {
       const x = labelWidth + index * columnWidth
-      svg += `<rect x="${x}" y="${y}" width="${columnWidth}" height="${rowHeight}" fill="#ffffff" stroke="#ecece7"/>`
+      svg += `<rect x="${x}" y="${y}" width="${columnWidth}" height="${rowHeight}" fill="${exportTokens.cellBg}" stroke="${exportTokens.cellBorder}"/>`
       svg += textLines(cellToText(row, stage.id), x + 14, y + 28)
     })
   })

@@ -35,8 +35,18 @@ If any older note or task mentions `D:\knowledge\codex\design`, treat it as hist
 3. Create or reuse a task in `.roundtable-lite/tasks.jsonl`.
 4. Create a dedicated branch and linked worktree under `.worktrees/<task-or-branch-name>`.
 5. Implement and verify only inside that linked worktree.
-6. Record verification evidence and changed files when submitting or completing the task.
-7. Use reviewer flow whenever the task's `review_required` is `true`.
+6. Before ending the session, the implementation agent itself must call the Roundtable Lite task transition:
+   - `submit` when `review_required` is `true`
+   - `complete` when `review_required` is `false`
+7. Record verification evidence, changed files, diff summary, and commit hash in that task transition.
+8. Use reviewer flow whenever the task's `review_required` is `true`.
+
+## End-of-task rule
+
+- Finishing code, creating a commit, or reporting success in chat does not complete the task by itself.
+- A task stays unfinished until the agent records the matching Roundtable Lite event.
+- If the agent forgets to call `submit` or `complete`, the host should treat the work as still `in_progress`.
+- Reviewer approval is the only valid path from `review` to `completed`.
 
 ## When the worktree is already dirty
 
