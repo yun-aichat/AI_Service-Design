@@ -12,7 +12,6 @@ const {
 function createClient(overrides = {}) {
   return {
     getSession: async () => ({ data: {} }),
-    signInAnonymously: async () => ({ data: {} }),
     signInWithOtp: async () => ({ data: {} }),
     signOut: async () => undefined,
     onAuthStateChange: () => ({
@@ -103,26 +102,6 @@ test("sends and verifies email OTP through the CloudBase client", async () => {
   assert.equal(request.email, "user@example.com");
   assert.equal(verification.email, "user@example.com");
   assert.equal(session.user.id, "email-user");
-});
-
-test("supports anonymous sign-in for local acceptance flows", async () => {
-  const adapter = new CloudBaseAuthAdapter(
-    createClient({
-      signInAnonymously: async () => ({
-        data: {
-          session: {
-            access_token: "anon-token",
-            expires_in: 7200,
-            user: { id: "anon-user", is_anonymous: true },
-          },
-        },
-      }),
-    })
-  );
-
-  const session = await adapter.signInAnonymously();
-  assert.equal(session.user.id, "anon-user");
-  assert.equal(session.user.isAnonymous, true);
 });
 
 test("sends and verifies phone OTP through the CloudBase client", async () => {

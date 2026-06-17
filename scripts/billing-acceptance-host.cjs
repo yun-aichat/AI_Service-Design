@@ -1,18 +1,16 @@
 const http = require("node:http");
 const { createServer: createViteServer } = require("vite");
+const billingApiHandler = require("../api/billing.js");
 const {
-  BillingPortalError,
-  createBillingPortalService,
-  normalizePortalError,
-} = require("../server/application/billing-portal.cjs");
-const {
-  InMemoryBillingRepository,
-  createBillingService,
-} = require("../server/application/billing/index.cjs");
+  BILLING_COLLECTIONS,
+} = require("../server/infrastructure/cloudbase/billing/repository.cjs");
 
 const HOST = process.env.BILLING_ACCEPTANCE_HOST || "127.0.0.1";
 const PORT = Number(process.env.BILLING_ACCEPTANCE_PORT || 4173);
-const seededPortals = new Map();
+const seededAccounts = new Set();
+const database = createAcceptanceDatabase();
+
+globalThis.__cloudbaseDatabase = database;
 
 start().catch((error) => {
   console.error(error);
@@ -20,6 +18,8 @@ start().catch((error) => {
 });
 
 async function start() {
+  seedCreditPackages(database.stores);
+
   const vite = await createViteServer({
     appType: "spa",
     server: {
@@ -31,7 +31,8 @@ async function start() {
   const server = http.createServer(async (request, response) => {
     try {
       if (request.url === "/api/billing") {
-        await handleBillingApi(request, response);
+        ensureAcceptanceLedgerSeed(request.headers.authorization);
+        billingApiHandler(request, response);
         return;
       }
       vite.middlewares(request, response);
@@ -50,6 +51,7 @@ async function start() {
   });
 
   const stop = async () => {
+    delete globalThis.__cloudbaseDatabase;
     await vite.close();
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
@@ -61,146 +63,86 @@ async function start() {
   process.on("SIGTERM", stop);
 
   console.log(
-    `Billing acceptance host running at http://${HOST}:${PORT}/billing`,
+    `Billing acceptance host running at http://${HOST}:${PORT}/billing using formal api/billing.js`,
   );
 }
 
-async function handleBillingApi(request, response) {
-  if (request.method !== "POST") {
-    sendJson(response, 405, {
-      error: "Only POST is supported.",
-      code: "METHOD_NOT_ALLOWED",
-    });
-    return;
+function ensureAcceptanceLedgerSeed(authorization) {
+  const accountId = decodeAccountIdFromAuthorization(authorization);
+  if (!accountId || seededAccounts.has(accountId)) return;
+
+  const ledgerStore = database.stores[BILLING_COLLECTIONS.ledgerEntries];
+  for (const entry of buildLedgerEntriesForUser(accountId)) {
+    ledgerStore.set(entry.id, cloneJson(entry));
   }
-
-  try {
-    const user = await authenticateRequest(request);
-    const body = await readJsonBody(request);
-    const action = requireAction(body?.action);
-    const portal = await getSeededPortal(user);
-
-    let result;
-    switch (action) {
-      case "getMyCreditAccount":
-        result = await portal.getMyCreditAccount({ user });
-        break;
-      case "listCreditPackages":
-        result = await portal.listCreditPackages({
-          user,
-          enabled: body.enabled,
-          limit: body.limit,
-          offset: body.offset,
-        });
-        break;
-      case "listMyLedgerEntries":
-        result = await portal.listMyLedgerEntries({
-          user,
-          operation: body.operation,
-          referenceType: body.referenceType,
-          limit: body.limit,
-          offset: body.offset,
-        });
-        break;
-      default:
-        throw new BillingPortalError(
-          "UNKNOWN_ACTION",
-          `Unsupported billing action "${action}".`,
-          404,
-        );
-    }
-
-    sendJson(response, 200, result);
-  } catch (error) {
-    const normalized = normalizePortalError(error);
-    sendJson(
-      response,
-      Number.isInteger(normalized?.status) ? normalized.status : 500,
-      {
-        error:
-          normalized instanceof Error
-            ? normalized.message
-            : "Billing request failed.",
-        code: normalized?.code || "BILLING_PORTAL_ERROR",
-      },
-    );
-  }
+  seededAccounts.add(accountId);
 }
 
-async function getSeededPortal(user) {
-  const existing = seededPortals.get(user.id);
-  if (existing) return existing;
-
-  const repository = new InMemoryBillingRepository({
-    ledgerEntries: Object.fromEntries(
-      buildLedgerEntriesForUser(user.id).map((entry) => [entry.id, entry]),
-    ),
-  });
-  const billingService = createBillingService({
-    repository,
-    now: () => "2026-06-16T20:00:00.000Z",
-    createId: createSequentialIdFactory(),
-  });
-  await seedPackages(billingService);
-
-  const portal = createBillingPortalService({
-    billingRepository: repository,
-    billingService,
-  });
-  seededPortals.set(user.id, portal);
-  return portal;
-}
-
-async function seedPackages(billingService) {
+function seedCreditPackages(stores) {
+  const packageStore = stores[BILLING_COLLECTIONS.creditPackages];
   const packages = [
     {
+      id: "starter-100",
       packageId: "starter-100",
       displayName: "Starter 100",
       credits: 100,
       bonusCredits: 0,
+      totalCredits: 100,
       priceValue: 990,
       currency: "CNY",
       enabled: true,
-      sortOrder: 10,
+      validityDays: null,
+      channelScope: null,
       description: "适合首次体验积分功能。",
+      sortOrder: 10,
+      createdAt: "2026-06-16T09:00:00.000Z",
+      updatedAt: "2026-06-16T09:00:00.000Z",
     },
     {
+      id: "pro-500",
       packageId: "pro-500",
       displayName: "Pro 500",
       credits: 500,
       bonusCredits: 50,
+      totalCredits: 550,
       priceValue: 3990,
       currency: "CNY",
       enabled: true,
-      sortOrder: 20,
+      validityDays: null,
+      channelScope: null,
       description: "恢复后的用户侧套餐列表验收用数据。",
+      sortOrder: 20,
+      createdAt: "2026-06-16T09:05:00.000Z",
+      updatedAt: "2026-06-16T09:05:00.000Z",
     },
     {
+      id: "archived-1000",
       packageId: "archived-1000",
       displayName: "Archived 1000",
       credits: 1000,
       bonusCredits: 100,
+      totalCredits: 1100,
       priceValue: 7990,
       currency: "CNY",
       enabled: false,
-      sortOrder: 30,
+      validityDays: null,
+      channelScope: null,
       description: "已下架套餐不会出现在默认列表。",
+      sortOrder: 30,
+      createdAt: "2026-06-16T09:10:00.000Z",
+      updatedAt: "2026-06-16T09:10:00.000Z",
     },
   ];
 
-  for (const item of packages) {
-    try {
-      await billingService.createCreditPackage(item);
-    } catch (error) {
-      if (error?.code !== "CREDIT_PACKAGE_ALREADY_EXISTS") throw error;
-    }
+  for (const record of packages) {
+    packageStore.set(record.packageId, cloneJson(record));
   }
 }
 
 function buildLedgerEntriesForUser(accountId) {
   const primaryEntries = [
     makeLedgerEntry({
-      id: "ledger-001",
+      id: `ledger-${accountId}-001`,
       accountId,
       operation: "purchase",
       referenceType: "order",
@@ -210,7 +152,7 @@ function buildLedgerEntriesForUser(accountId) {
       createdAt: "2026-06-16T09:00:00.000Z",
     }),
     makeLedgerEntry({
-      id: "ledger-002",
+      id: `ledger-${accountId}-002`,
       accountId,
       operation: "grant",
       referenceType: "admin",
@@ -220,7 +162,7 @@ function buildLedgerEntriesForUser(accountId) {
       createdAt: "2026-06-16T09:10:00.000Z",
     }),
     makeLedgerEntry({
-      id: "ledger-003",
+      id: `ledger-${accountId}-003`,
       accountId,
       operation: "reserve",
       referenceType: "ai_run",
@@ -231,7 +173,7 @@ function buildLedgerEntriesForUser(accountId) {
       createdAt: "2026-06-16T09:20:00.000Z",
     }),
     makeLedgerEntry({
-      id: "ledger-004",
+      id: `ledger-${accountId}-004`,
       accountId,
       operation: "commit",
       referenceType: "ai_run",
@@ -242,7 +184,7 @@ function buildLedgerEntriesForUser(accountId) {
       createdAt: "2026-06-16T09:30:00.000Z",
     }),
     makeLedgerEntry({
-      id: "ledger-005",
+      id: `ledger-${accountId}-005`,
       accountId,
       operation: "purchase",
       referenceType: "order",
@@ -252,7 +194,7 @@ function buildLedgerEntriesForUser(accountId) {
       createdAt: "2026-06-16T09:40:00.000Z",
     }),
     makeLedgerEntry({
-      id: "ledger-006",
+      id: `ledger-${accountId}-006`,
       accountId,
       operation: "reserve",
       referenceType: "ai_run",
@@ -263,7 +205,7 @@ function buildLedgerEntriesForUser(accountId) {
       createdAt: "2026-06-16T09:50:00.000Z",
     }),
     makeLedgerEntry({
-      id: "ledger-007",
+      id: `ledger-${accountId}-007`,
       accountId,
       operation: "release",
       referenceType: "ai_run",
@@ -274,7 +216,7 @@ function buildLedgerEntriesForUser(accountId) {
       createdAt: "2026-06-16T10:00:00.000Z",
     }),
     makeLedgerEntry({
-      id: "ledger-008",
+      id: `ledger-${accountId}-008`,
       accountId,
       operation: "adjustment",
       referenceType: "admin",
@@ -284,7 +226,7 @@ function buildLedgerEntriesForUser(accountId) {
       createdAt: "2026-06-16T10:10:00.000Z",
     }),
     makeLedgerEntry({
-      id: "ledger-009",
+      id: `ledger-${accountId}-009`,
       accountId,
       operation: "expire",
       referenceType: "admin",
@@ -294,7 +236,7 @@ function buildLedgerEntriesForUser(accountId) {
       createdAt: "2026-06-16T10:20:00.000Z",
     }),
     makeLedgerEntry({
-      id: "ledger-010",
+      id: `ledger-${accountId}-010`,
       accountId,
       operation: "purchase",
       referenceType: "order",
@@ -304,7 +246,7 @@ function buildLedgerEntriesForUser(accountId) {
       createdAt: "2026-06-16T10:30:00.000Z",
     }),
     makeLedgerEntry({
-      id: "ledger-011",
+      id: `ledger-${accountId}-011`,
       accountId,
       operation: "commit",
       referenceType: "ai_run",
@@ -314,7 +256,7 @@ function buildLedgerEntriesForUser(accountId) {
       createdAt: "2026-06-16T10:40:00.000Z",
     }),
     makeLedgerEntry({
-      id: "ledger-012",
+      id: `ledger-${accountId}-012`,
       accountId,
       operation: "refund",
       referenceType: "refund",
@@ -327,7 +269,7 @@ function buildLedgerEntriesForUser(accountId) {
 
   const otherAccountEntries = [
     makeLedgerEntry({
-      id: "other-001",
+      id: `other-${accountId}-001`,
       accountId: `other-${accountId}`,
       operation: "purchase",
       referenceType: "order",
@@ -366,96 +308,15 @@ function makeLedgerEntry(overrides) {
   };
 }
 
-function createSequentialIdFactory() {
-  let sequence = 0;
-  return (prefix) => `${prefix}-${String(++sequence).padStart(4, "0")}`;
-}
-
-async function authenticateRequest(request) {
-  const { CloudBaseAccessTokenVerifier, readBearerToken } = await import(
-    "../server/infrastructure/cloudbase/auth/verify-access-token.mjs"
-  );
-  const token = readBearerToken(request.headers.authorization);
-  if (!token) {
-    throw new BillingPortalError(
-      "UNAUTHENTICATED",
-      "A signed-in user is required.",
-      401,
-    );
-  }
-
-  let profile = null;
-  try {
-    profile = await new CloudBaseAccessTokenVerifier().verify(token);
-  } catch {
-    profile = null;
-  }
-  if (
-    profile?.id &&
-    profile.id !== "undefined" &&
-    profile.id !== "null"
-  ) {
-    return profile;
-  }
-
-  const decoded = decodeJwtPayload(token);
-  const fallbackId = decoded?.user_id || decoded?.sub;
-  if (!fallbackId) {
-    throw new BillingPortalError(
-      "UNAUTHENTICATED",
-      "A signed-in user is required.",
-      401,
-    );
-  }
-  return {
-    id: String(fallbackId),
-    email: typeof decoded?.email === "string" ? decoded.email : null,
-    phone: typeof decoded?.phone_number === "string" ? decoded.phone_number : null,
-    displayName: typeof decoded?.name === "string" ? decoded.name : null,
-    roles: [],
-  };
-}
-
-function readJsonBody(request) {
-  return new Promise((resolve, reject) => {
-    let raw = "";
-    request.on("data", (chunk) => {
-      raw += chunk;
-      if (raw.length > 1_000_000) {
-        reject(
-          new BillingPortalError(
-            "PAYLOAD_TOO_LARGE",
-            "Request body is too large.",
-            413,
-          ),
-        );
-        request.destroy();
-      }
-    });
-    request.on("end", () => {
-      try {
-        resolve(raw ? JSON.parse(raw) : {});
-      } catch {
-        reject(
-          new BillingPortalError("INVALID_JSON", "Request body must be JSON.", 400),
-        );
-      }
-    });
-    request.on("error", reject);
-  });
-}
-
-function requireAction(value) {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new BillingPortalError("INVALID_INPUT", "action is required.", 400);
-  }
-  return value.trim();
-}
-
-function sendJson(response, status, body) {
-  response.statusCode = status;
-  response.setHeader("Content-Type", "application/json; charset=utf-8");
-  response.end(JSON.stringify(body));
+function decodeAccountIdFromAuthorization(authorization) {
+  const match =
+    typeof authorization === "string"
+      ? authorization.match(/^Bearer\s+(.+)$/i)
+      : null;
+  if (!match?.[1]) return null;
+  const payload = decodeJwtPayload(match[1]);
+  const accountId = payload?.user_id || payload?.sub;
+  return typeof accountId === "string" && accountId ? accountId : null;
 }
 
 function decodeJwtPayload(token) {
@@ -471,4 +332,105 @@ function decodeJwtPayload(token) {
   } catch {
     return null;
   }
+}
+
+function createAcceptanceDatabase() {
+  const stores = Object.fromEntries(
+    Object.values(BILLING_COLLECTIONS).map((name) => [name, new Map()]),
+  );
+
+  return {
+    stores,
+    collection(name) {
+      const store = stores[name];
+      if (!store) throw new Error(`Unknown collection "${name}".`);
+      return createCollection(store);
+    },
+  };
+}
+
+function createCollection(store) {
+  return {
+    async get() {
+      return { data: [...store.values()].map(cloneJson) };
+    },
+    doc(id) {
+      return {
+        async get() {
+          return { data: store.has(id) ? cloneJson(store.get(id)) : null };
+        },
+      };
+    },
+    where(query) {
+      const matched = () =>
+        [...store.values()].filter((record) =>
+          Object.entries(query).every(([key, value]) => record?.[key] === value),
+        );
+      return createQuery(matched);
+    },
+  };
+}
+
+function createQuery(matched, state = {}) {
+  const nextState = {
+    orderByFields: state.orderByFields || [],
+    skipValue: state.skipValue || 0,
+    limitValue: state.limitValue ?? null,
+  };
+
+  return {
+    orderBy(field, direction) {
+      return createQuery(matched, {
+        ...nextState,
+        orderByFields: [...nextState.orderByFields, { field, direction }],
+      });
+    },
+    skip(value) {
+      return createQuery(matched, {
+        ...nextState,
+        skipValue: value,
+      });
+    },
+    limit(value) {
+      return createQuery(matched, {
+        ...nextState,
+        limitValue: value,
+      });
+    },
+    async get() {
+      const ordered = applyOrdering(matched(), nextState.orderByFields);
+      const sliced = ordered.slice(
+        nextState.skipValue,
+        nextState.limitValue === null
+          ? undefined
+          : nextState.skipValue + nextState.limitValue,
+      );
+      return { data: sliced.map(cloneJson) };
+    },
+  };
+}
+
+function applyOrdering(records, orderByFields) {
+  if (!orderByFields.length) return records.map(cloneJson);
+  return [...records].sort((left, right) => {
+    for (const { field, direction } of orderByFields) {
+      const leftValue = String(left?.[field] || "");
+      const rightValue = String(right?.[field] || "");
+      const comparison = leftValue.localeCompare(rightValue);
+      if (comparison !== 0) {
+        return direction === "desc" ? -comparison : comparison;
+      }
+    }
+    return 0;
+  });
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function sendJson(response, status, body) {
+  response.statusCode = status;
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  response.end(JSON.stringify(body));
 }
