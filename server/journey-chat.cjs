@@ -16,7 +16,7 @@ const { getBillingConfigService } = require("./billing-config.cjs");
 const {
   CloudBaseBillingRepository,
 } = require("./infrastructure/cloudbase/billing/repository.cjs");
-const { service: toolDocumentService } = require("./tool-documents.cjs");
+const { getToolDocumentService } = require("./tool-documents.cjs");
 
 let assistantService = null;
 
@@ -36,7 +36,7 @@ function getAssistantService(overrides = {}) {
     const resolvedModelProvider =
       overrides.modelProvider || createGlmAssistantModelProvider();
     const resolvedToolDocumentService =
-      overrides.toolDocumentService || toolDocumentService;
+      overrides.toolDocumentService || getToolDocumentService();
     const resolvedBillingConfigService =
       overrides.billingConfigService || getBillingConfigService();
 
