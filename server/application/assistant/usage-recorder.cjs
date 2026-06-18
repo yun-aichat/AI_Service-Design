@@ -3,6 +3,11 @@ const { ASSISTANT_USAGE_EVENT } = require("./protocol.cjs");
 const DEFAULT_ASSISTANT_ACTION_KEY = "proposal";
 const DEFAULT_ASSISTANT_TIER_KEY = "standard";
 
+const BILLING_STATUS = Object.freeze({
+  CHARGED: "charged",
+  NOT_CHARGED: "not_charged",
+});
+
 function createNoopAssistantUsageRecorder() {
   return {
     async recordGenerated() {
@@ -48,6 +53,9 @@ function createToolDocumentAssistantUsageRecorder({
             : null;
       const responsePhase = response ? response.phase || null : null;
       const usageKeys = resolveUsageKeys(request);
+      const status = resolveBillingEventStatus(error, responsePhase);
+      const billingStatus = resolveBillingResult(status, chargedCredits);
+      const settledCredits = status === "succeeded" ? chargedCredits : 0;
 
       let toolResult = null;
       if (hasToolDocumentWriter) {
@@ -78,6 +86,9 @@ function createToolDocumentAssistantUsageRecorder({
               totalTokens,
               runId: runId || null,
               error: error || null,
+              status,
+              billingStatus,
+              chargedCredits: settledCredits,
             },
           });
         } catch {}
@@ -112,8 +123,9 @@ function createToolDocumentAssistantUsageRecorder({
               outputTokens,
               totalTokens,
               estimatedCostValue: null,
-              chargedCredits,
-              status: error ? "failed" : "succeeded",
+              chargedCredits: settledCredits,
+              status,
+              billingStatus,
               referenceId: runId || "unknown",
             },
           });
@@ -123,6 +135,18 @@ function createToolDocumentAssistantUsageRecorder({
       return toolResult;
     },
   };
+}
+
+function resolveBillingEventStatus(error, responsePhase) {
+  if (error) return "failed";
+  if (responsePhase === "clarify") return "cancelled";
+  if (responsePhase === "proposal" || responsePhase === "message") return "succeeded";
+  return "failed";
+}
+
+function resolveBillingResult(status, chargedCredits) {
+  if (status === "succeeded" && chargedCredits > 0) return BILLING_STATUS.CHARGED;
+  return BILLING_STATUS.NOT_CHARGED;
 }
 
 function resolveUsageKeys(request) {
@@ -146,9 +170,12 @@ function resolveUsageKeys(request) {
 }
 
 module.exports = {
+  BILLING_STATUS,
   DEFAULT_ASSISTANT_ACTION_KEY,
   DEFAULT_ASSISTANT_TIER_KEY,
   createNoopAssistantUsageRecorder,
   createToolDocumentAssistantUsageRecorder,
+  resolveBillingEventStatus,
+  resolveBillingResult,
   resolveUsageKeys,
 };

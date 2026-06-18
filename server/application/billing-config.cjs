@@ -184,6 +184,7 @@ function createBillingConfigService({
         "provider",
         "model",
         "status",
+        "billingStatus",
         "referenceId",
       ]),
       sortBy: optionalString(input.sortBy) || "createdAt",
@@ -309,6 +310,7 @@ function createBillingConfigService({
         typeof record.estimatedCostValue === "number" ? record.estimatedCostValue : null,
       chargedCredits: typeof record.chargedCredits === "number" ? record.chargedCredits : 0,
       status: record.status,
+      billingStatus: record.billingStatus || null,
       referenceId: record.referenceId,
       createdAt: timestamp,
     };
@@ -430,6 +432,14 @@ function validateAiUsageEvent(record) {
     );
   }
 
+  const billingStatus = optionalString(record.billingStatus);
+  if (billingStatus && !["charged", "not_charged"].includes(billingStatus)) {
+    throw new BillingConfigError(
+      "INVALID_INPUT",
+      "record.billingStatus must be one of: charged, not_charged.",
+    );
+  }
+
   return {
     id: optionalString(record.id),
     userId: optionalString(record.userId),
@@ -461,6 +471,7 @@ function validateAiUsageEvent(record) {
         ? 0
         : requireNonNegativeInteger(record.chargedCredits, "record.chargedCredits"),
     status,
+    billingStatus,
     referenceId: requireString(record.referenceId, "record.referenceId"),
   };
 }
