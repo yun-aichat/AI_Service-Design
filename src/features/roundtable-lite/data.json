@@ -1,0 +1,1725 @@
+{
+  "generated_at": "2026-06-18T14:41:42.335Z",
+  "summary": {
+    "total_tasks": 44,
+    "completed": 21,
+    "cancelled": 22,
+    "in_review": 0,
+    "in_progress": 1,
+    "queued": 0,
+    "total_reviews": 24,
+    "approved_reviews": 17,
+    "changes_requested": 7,
+    "approval_rate": 71
+  },
+  "migration": {
+    "migrated_at": "2026-06-07T04:35:49.143Z",
+    "source_project": "rt_mq2bqv8x_9ab054",
+    "source_name": "AI 服务设计工具箱",
+    "modules": 6,
+    "tasks": 32,
+    "submissions": 5,
+    "reviews": 4,
+    "handoffs": 2
+  },
+  "project_md": "# AI 服务设计工具箱\n\n## Migration\n- Source: .roundtable\n- Migrated at: 2026-06-07T04:35:49.015Z\n- Source project id: rt_mq2bqv8x_9ab054\n- Historical workspace: D:\\knowledge\\codex\\design\n- Canonical workspace: D:\\knowledge\\codex\\design_02\n\n## Product Goal\n多工具、AI 协作、CloudBase 账号与按次付费的服务设计平台\n\n## Imported Roundtable Memory\n\n# Project Memory\n\n## Product\n\n- 服务设计工具箱由多个独立工具组成，AI 协助用户选择、理解和使用工具。\n- 当前已完成用户旅程图 DEMO，后续以同一工具契约接入 Personas 等工具。\n- 商业模式为邮箱账号登录、微信/支付宝支付、按使用次数扣费。\n\n## Decisions\n\n- 2026-06-06：采用模块化单体和单仓库，MVP 不拆微服务。\n- 2026-06-06：工具通过 ToolDefinition 注册；领域规则不依赖 React、CloudBase、模型或支付供应商。\n- 2026-06-06：AI 分全局 Skill/记忆与工具 Skill/记忆；修改使用结构化命令，用户确认后执行。\n- 2026-06-06：优先使用 CloudBase 的认证、数据库、云函数和对象存储，通过自有端口隔离供应商 SDK。\n- 2026-06-06：额度采用不可变账本及预占/提交/释放流程；支付与扣次均要求幂等。\n- 2026-06-06：先无行为变化地拆分现有 Journey Map DEMO，再接登录、持久化和支付。\n\n## Interfaces\n\n- ToolDefinition：metadata、documentVersion、createInitialDocument、validateDocument、applyCommand、exports、ai。\n- ToolDocument：id、projectId、toolId、schemaVersion、revision、title、content、timestamps。\n- AssistantRequest：scope、projectId、documentId、toolId、messages、attachmentRefs。\n- AI 响应：message、clarify、commands、recommend_tools。\n- 基础设施端口：AuthPort、DocumentRepository、LedgerRepository、PaymentProvider、ModelProvider、ObjectStorage。\n- 详细契约和阶段计划见 docs/project-architecture.md。\n\n- 2026-06-06：DEMO 重构保留交互而不复刻旧视觉；设计系统以 Chakra UI v3 的 Token、semantic tokens 和 Recipe 为基础，只做轻量产品定制。详细计划见 docs/demo-refactor-plan.md。\r\n\r\n## Delivery Order\n\n1. 架构护栏和测试基线。\n2. 拆分 DEMO 并建立工具运行时。\n3. CloudBase 登录、项目与文档持久化。\n4. 额度账本、微信/支付宝支付。\n5. 全局助手和第二个工具。\n\n## Active Workflow\n\n- 2026-06-16：本仓库只使用 `.roundtable-lite/` 作为活跃协作状态；旧 `.roundtable/` 仅作为已迁移历史，不再继续使用。\n- 2026-06-16：标准开发流程为“一任务一分支，一分支一 linked worktree”；主工作区用于主持、审查、分诊和低风险文档维护，不作为常规功能开发工作区。\n- 2026-06-16：凡是出现 tracked files 异常缺失、跨模块混改或旧路径 `D:\\knowledge\\codex\\design` 与当前工作区混用，先视为基线问题处理，再开始新任务。\n- 2026-06-16：任务 agent 在完成实现后，必须自行调用 Roundtable Lite 的 `submit` 或 `complete`。只有代码提交、没有任务状态流转，不算任务完成。\n\n## Open Questions\n\n- 哪些 AI 行为扣次：仅成功生成/修改，还是澄清和全局咨询也扣次。\n- 套餐中一次使用的精确定义、退款规则和赠送额度有效期。\n- CloudBase 当前已安装 Skill/MCP 的实际工具名与支持范围需在实现时确认。\n- 微信支付与支付宝所使用的商户主体、产品类型及回调域名尚未确定。\r\n\r\n## Git Delivery Rule\n\n- 完成一个可审查工作单元并通过验证后，必须创建本地 Git commit。\n- 只能显式暂存本模块本轮修改的文件；禁止 `git add .` 和 `git add -A`。\n- 提交前检查 `git diff --cached`，不得包含用户已有改动、其他模块文件、密钥或构建产物。\n- 如果必须修改一个进入任务前已经脏的文件，不能直接整文件暂存；应通过 Roundtable 通知主持人处理基线或安全分块暂存。\n- Roundtable Lite 任务在收尾时必须记录 commit hash、验证结果、changed files 和 diff summary。\n- `review_required=true` 的任务必须由实现 agent 调用 `submit` 进入 `review`；`review_required=false` 的任务必须由实现 agent 调用 `complete`。\n- 不执行远端 `git push`，除非用户或主持人明确要求。\n",
+  "modules": [
+    {
+      "name": "platform-shell",
+      "boundary": "src/app, src/design-system",
+      "dependencies": [],
+      "display_name": "平台壳与设计系统",
+      "description": "负责基于 Chakra UI v3 的主题、Recipe、应用壳、路由与产品专用组件；不持有业务规则。",
+      "task": "先完成 Chakra-first 设计基础、品牌主题、组件契约与 /components 验收，再进入业务 UI 重构。",
+      "output_path": "src/app, src/design-system",
+      "total": 16,
+      "completed": 8,
+      "in_progress": 1,
+      "review": 0,
+      "queued": 0,
+      "cancelled": 7,
+      "high_risk": 13
+    },
+    {
+      "name": "tool-runtime",
+      "boundary": "src/domain, src/application, src/tools",
+      "dependencies": [],
+      "display_name": "工具运行时与领域",
+      "description": "负责纯 TypeScript 领域模型、工具注册、文档命令、Schema 迁移和导出协议。",
+      "task": "定义 ToolDefinition/ToolDocument 契约，并把 Journey Map 变成第一个正式工具。",
+      "output_path": "src/domain, src/application, src/tools",
+      "total": 8,
+      "completed": 5,
+      "in_progress": 0,
+      "review": 0,
+      "queued": 0,
+      "cancelled": 3,
+      "high_risk": 8
+    },
+    {
+      "name": "ai-orchestration",
+      "boundary": "src/features/assistant, server/application/assistant, skills",
+      "dependencies": [
+        "tool-runtime"
+      ],
+      "display_name": "AI 编排与 Skills",
+      "description": "负责全局/工具 Skill、上下文构建、模型适配、结构化提案校验和 AI 运行记录。",
+      "task": "将 Journey Chat 泛化为统一 Assistant 协议，并设计全局与工具级记忆。",
+      "output_path": "src/features/assistant, server/application/assistant, skills",
+      "total": 5,
+      "completed": 1,
+      "in_progress": 0,
+      "review": 0,
+      "queued": 0,
+      "cancelled": 4,
+      "high_risk": 4
+    },
+    {
+      "name": "identity-cloudbase",
+      "boundary": "src/features/account, src/infrastructure/cloudbase/auth, server/infrastructure/cloudbase/auth",
+      "dependencies": [],
+      "display_name": "账号与 CloudBase 身份",
+      "description": "负责邮箱登录、会话、用户资料、授权端口及 CloudBase 身份适配。",
+      "task": "确认 CloudBase 可用能力并实现 AuthPort 与邮箱登录闭环。",
+      "output_path": "src/features/account, src/infrastructure/cloudbase/auth, server/infrastructure/cloudbase/auth",
+      "total": 3,
+      "completed": 2,
+      "in_progress": 0,
+      "review": 0,
+      "queued": 0,
+      "cancelled": 1,
+      "high_risk": 3
+    },
+    {
+      "name": "billing-entitlements",
+      "boundary": "src/features/billing, server/application/billing, server/infrastructure/payments",
+      "dependencies": [
+        "identity-cloudbase"
+      ],
+      "display_name": "支付、订单与次数权益",
+      "description": "负责商品、订单、微信/支付宝适配、额度账本以及预占/提交/释放。",
+      "task": "定义订单状态机和不可变次数账本，随后接入微信与支付宝。",
+      "output_path": "src/features/billing, server/application/billing, server/infrastructure/payments",
+      "total": 8,
+      "completed": 4,
+      "in_progress": 0,
+      "review": 0,
+      "queued": 0,
+      "cancelled": 4,
+      "high_risk": 5
+    },
+    {
+      "name": "persistence-backend",
+      "boundary": "server, src/infrastructure/cloudbase",
+      "dependencies": [
+        "tool-runtime",
+        "identity-cloudbase"
+      ],
+      "display_name": "持久化与后端平台",
+      "description": "负责项目/工具文档仓储、BFF/API、对象存储、审计、错误约定和可观测性。",
+      "task": "建立 CloudBase 仓储适配器、服务端鉴权边界和文档 revision 乐观锁。",
+      "output_path": "server, src/infrastructure/cloudbase",
+      "total": 4,
+      "completed": 1,
+      "in_progress": 0,
+      "review": 0,
+      "queued": 0,
+      "cancelled": 3,
+      "high_risk": 3
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "task_mqjly79c_35e90b24",
+      "title": "Add Roundtable Lite dashboard route and generated project snapshot",
+      "module": "platform-shell",
+      "risk": "normal",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "Add a dedicated /roundtable dashboard that visualizes current .roundtable-lite project state from generated JSON data, wire the route into the frontend shell, and add build/dev hooks that regenerate the snapshot from .roundtable-lite without touching business-domain logic.",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-18T14:41:15.840Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-18T14:41:30.701Z",
+          "note": "补录当前 feat/roundtable-lite-viz 本地实现到正式 Lite 流程：先核查 /roundtable 页面、数据生成脚本与 Vite watch 接线，再完成最小验证与审查提交。"
+        }
+      ],
+      "status": "in_progress",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqi7yyzt_bd4137f7",
+      "title": "Record assistant usage billing settlement fields",
+      "module": "billing-entitlements",
+      "risk": "normal",
+      "task_type": "payment",
+      "review_required": true,
+      "description": "Extend assistant usage event recording so billing can distinguish charged vs non-charged AI runs by persisting billingStatus, corrected status mapping, and chargedCredits settlement rules in usage-recorder and billing-config without changing the assistant request chain.",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-17T15:22:10.985Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-17T15:22:17.754Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-17T15:22:36.982Z",
+          "note": "Recorded from TRAE-delivered commit on branch feat/assistant-billing-integration; scope intentionally excludes assistant request-chain wiring."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-17T15:25:04.235Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "b7a66f4583336e56584f97381a4d1e8741096886",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mqi6607k_ee86f5b1",
+      "title": "Formal AI billing settlement for Journey assistant",
+      "module": "billing-entitlements",
+      "risk": "high",
+      "task_type": "payment",
+      "review_required": true,
+      "description": "Provide a formal billing application-layer interface for Journey assistant to read AI action pricing by toolKey/actionKey/tierKey, reserve credits for each run, commit on proposal success, and release on clarify/error/timeout. Keep scope within billing-entitlements and identity-cloudbase dependencies, without expanding payment providers or admin flows.",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-17T14:31:39.920Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-17T14:33:08.599Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-17T14:42:30.925Z",
+          "note": "Scope kept to Journey assistant defaults: actionKey=proposal, tierKey=standard, each run gets a fresh ai_run reference, with no payment-provider or fallback expansion."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-17T14:51:25.063Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "44151d9bebd263490e7b24feebe954e193539dee",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mqgo81lm_95054135",
+      "title": "切换 Tool Documents 正式宿主到 CloudBase",
+      "module": "persistence-backend",
+      "risk": "critical",
+      "task_type": "database",
+      "review_required": true,
+      "description": "将正式 tool-documents 宿主从 InMemoryToolDocumentRepository 切到 CloudBase repository，保持当前鉴权、revision、usage event 和 Journey 文档协议；补宿主层测试与本地验证，完成后让 Journey 的项目/文档/revision/usage event 真正进入正式持久化链路。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-16T13:21:35.770Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-16T13:22:07.398Z",
+          "note": "2026-06-16 今晚收口：将 tool-documents 正式宿主切到 CloudBase repository，并补本地与宿主层验证，目标是让项目/文档/revision/usage event 进入正式持久化链路。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-16T13:58:00.028Z",
+          "note": "提交物由 reviewer 代补 submit：commit 3e7a357 feat(persistence-backend): switch tool documents host to cloudbase。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-16T13:58:05.982Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "3e7a357",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mqfcql7y_832979ad",
+      "title": "Resume Frontend Billing from archive snapshot",
+      "module": "billing-entitlements",
+      "risk": "high",
+      "task_type": "payment",
+      "review_required": true,
+      "description": "从 archive/frontend-billing-root-c89a016 选择性恢复用户侧 Billing 前端，只恢复 src/features/billing/* 与 src/infrastructure/cloudbase/billing/api.ts，并按当前 main 的认证、路由、API 与设计 Token 接口重新接线。确保前端所有读取都基于当前登录用户身份，不能传任意 accountId；不改服务端 billing 领域契约。完成前端构建、组件测试、浏览器验收登录/空状态/错误状态/分页，审查通过后合并 main 并删除任务分支。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-15T15:12:19.438Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-15T15:12:27.848Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-15T15:40:53.822Z",
+          "note": "恢复遵循用户约束：未 cherry-pick c89a016；前端不再传入任意 accountId，BFF 统一从 access token 验证出的 user.id 推导账户；账本分页直接复用已进 main 的 CloudBase repository paging 修复。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-15T15:41:15.429Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-16T13:21:37.103Z",
+          "note": "2026-06-16 恢复今晚收口：补真实登录态与带 API 的浏览器验收证据，并在必要时补最小接线修复，目标是完成用户侧 Billing 页面。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-16T14:13:59.338Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-16T14:14:59.906Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-17T13:05:51.598Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-17T13:06:23.220Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "33ef31bcc9b319f14a853d3ba520a8b5e5568501",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mqdzqzrd_f2e4a8bc",
+      "title": "Frontend Billing",
+      "module": "billing-entitlements",
+      "risk": "normal",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "实现并收口用户侧 Billing 前端，包括套餐/余额/购买状态展示、CloudBase billing 适配与应用入口接线；与 P6 服务端账本和结算契约保持一致。对应分支 codex/frontend-billing，当前部分未提交实现位于共享工作区。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-14T16:20:57.097Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-14T16:21:18.639Z",
+          "note": "当前进行中。分支 codex/frontend-billing 目前与 main 同点 38f448f；实际前端改动尚在共享工作区，提交时需按任务边界拆分证据。"
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-15T14:50:16.305Z",
+          "note": "2026-06-15 按用户要求暂停。前端实现由 archive/frontend-billing-root-c89a016 与 codex/frontend-billing-v2 保留；后续恢复时从最新 main 创建新任务分支。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqdzqyr7_63fa9672",
+      "title": "Admin Console access and usage data fixes",
+      "module": "billing-entitlements",
+      "risk": "high",
+      "task_type": "cross_module",
+      "review_required": true,
+      "description": "完善 Billing 管理控制台的访问控制与 usage/cost/ledger 数据读取修复；覆盖管理入口、权限边界、查询适配与异常状态。当前 codex/admin-console 分支已有轻量管理页面提交 fed0722，工作区另有 usage recorder 测试与接线改动。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-14T16:20:55.795Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-14T16:21:18.559Z",
+          "note": "当前进行中。分支 codex/admin-console 指向 fed0722；后续重点是管理访问控制与 usage/cost/ledger 数据修复，而非仅页面骨架。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-16T13:50:25.440Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-16T14:01:15.598Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-16T14:10:35.491Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-17T12:47:03.299Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-17T12:56:05.720Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-17T12:56:54.196Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "baa7775",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mqdjs0tg_d8d41427",
+      "title": "统一设计 Token 单一真源",
+      "module": "platform-shell",
+      "risk": "normal",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "建立机器可读的设计 Token 唯一真源，使 Chakra 主题、/components 示例色板与设计文档共享同一数据源；增加同步与构建校验，消除深浅主题、焦点、输入边界和阴影规范漂移。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-14T08:53:51.268Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-14T08:59:27.089Z",
+          "note": "实现已在独立分支 codex/design-token-single-source 完成，现补齐 Roundtable Lite 任务记录并进入正式验收。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-14T09:00:10.143Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-14T09:24:15.930Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-14T09:26:17.146Z",
+          "note": "按独立审查意见整改 Windows CRLF/LF 比较，确保干净检出仍可通过 Token 同步校验。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-14T09:33:03.994Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-14T16:03:02.781Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "f65b02f",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mqbrm7uw_c3d77881",
+      "title": "P9 设计全局助手协议与工具推荐",
+      "module": "ai-orchestration",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "在现有 Journey assistant 基础上，定义 global assistant 请求/响应协议、工具推荐结构、项目摘要上下文与服务端骨架，为多工具阶段做准备；不改现有 Journey 页面视觉。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-13T02:57:45.032Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-15T14:59:13.070Z",
+          "note": "Paused: 2026-06-15 按用户要求，除 Admin Console access and usage data fixes 外全部暂停。恢复时从最新 main 创建独立任务分支。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqbrm7t9_7f660c93",
+      "title": "P8 接入第二个工具的领域骨架",
+      "module": "tool-runtime",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "选择 Personas 作为第二个工具，只实现 ToolDefinition、文档结构、命令模型、导出协议与 baseline tests；本轮不做最终页面视觉。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-13T02:57:44.973Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-15T14:58:58.577Z",
+          "note": "Paused: 2026-06-15 按用户要求，除 Admin Console access and usage data fixes 外全部暂停。恢复时从最新 main 创建独立任务分支。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqbrm7rp_1d1b0ac9",
+      "title": "P7 建立项目与文档列表查询接口",
+      "module": "persistence-backend",
+      "risk": "high",
+      "task_type": "database",
+      "review_required": true,
+      "description": "在现有 tool-documents 基础上补齐项目列表、文档列表、revision 摘要和 usage event 查询接口，统一错误码、鉴权边界与分页约定；不改前端最终视觉。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-13T02:57:44.917Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-15T14:58:57.072Z",
+          "note": "Paused: 2026-06-15 按用户要求，除 Admin Console access and usage data fixes 外全部暂停。恢复时从最新 main 创建独立任务分支。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqbrm0m5_490c4298",
+      "title": "P6 收口按次扣减与账本联动",
+      "module": "billing-entitlements",
+      "risk": "high",
+      "task_type": "payment",
+      "review_required": true,
+      "description": "基于现有 billing / entitlements 与 payment integration，实现面向 AI/tool 使用的扣次服务契约：明确何时预占、何时提交、何时释放，补齐 referenceId / idempotencyKey 规则与服务端测试；本轮不接真实支付 UI。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-13T02:57:35.645Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-14T16:19:59.325Z",
+          "note": "当前实现分支 codex/cloudbase-billing-transaction-orchestration；已包含 CloudBase 事务编排与购买结算幂等提交 7a401b8、82a053e，工作区继续补充 billing 配置、usage recorder 与相关测试。"
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-15T14:50:11.417Z",
+          "note": "2026-06-15 按用户要求暂停。事务加固已进入 main@90ad8e1；剩余 WIP 保存在 stash@{0}，后续恢复时新建续作任务，不与 Admin Console 活动分支混合。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2prq2z_42f5cc",
+      "title": "整改：完成账号认证集成验收",
+      "module": "identity-cloudbase",
+      "risk": "high",
+      "task_type": "auth",
+      "review_required": true,
+      "description": "挂载 /account 或等价入口；补 AuthPort/CloudBase 适配器错误与网络异常测试、缺失配置失败测试；在 CloudBase 托管域名完成邮箱和手机号 OTP、登出、会话恢复/过期的真实 E2E，并记录证据。完成后本地 commit 并重新提交监管员。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T18:56:07.115Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-06T19:27:04.510Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-07T04:45:19.373Z",
+          "note": "使用 CloudBase 官方认证 HTTP API 完成真实 OTP 联调。邮箱登录得到 sub=2063342352184901632；手机号登录得到 sub=2063342259440451584；两者在登录后重复调用 user/me 均命中相同 sub，退出后 user/me 立即返回 unauthenticated。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-07T05:48:17.180Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "c4e81fc",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2prp1d_491bd1",
+      "title": "整改：补齐工具运行时契约验证",
+      "module": "tool-runtime",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "为 create/apply/migrate/export/registry 增加自动测试，覆盖 revision 冲突、迁移缺失/跨级、重复与未知 toolId、定义非法及序列化边界；增加 Journey Map 当前数据与 proposal/导出适配验证说明或测试。完成后本地 commit 并重新提交监管员。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T18:56:05.761Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-06T19:13:21.223Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-06T19:14:19.274Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-07T05:48:14.609Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "d0325c6",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2ccsot_3dfbc5",
+      "title": "D1 清理旧代码并完成回归",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "删除替代后的旧组件和 CSS，检查依赖边界，完成主题、组件页、矩阵和 AI 流程回归。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:40:35.643Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-07T13:36:52.447Z",
+          "note": "开始 D1 收口：优先清理旧样式与残留实现，压缩无语义视觉值，检查边界后完成 build/test 回归。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-07T13:53:02.846Z",
+          "note": "仅提交 D1 范围 5 个文件。README、docs/design-system.md、tsconfig.json、vercel.json、vite 配置、api/server 和其他文档脏改动未纳入本 commit。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-07T13:54:39.667Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "36a05fd",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2ccsle_90c38a",
+      "title": "C3 拆分 Journey Map 编辑器",
+      "module": "tool-runtime",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "基于已验收组件体系提取矩阵编辑器，通过文档命令访问领域，保留关键交互。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:40:35.519Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-07T13:17:17.018Z",
+          "note": "基于当前 codex-c-phase-integration 分支继续收口 C3；仅打包 Journey 编辑器拆分相关文件，不纳入其他未提交改动。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-07T13:25:07.847Z",
+          "note": "仅提交 C3 范围 6 个文件；README、styles、vercel、vite 配置和文档等其他未提交改动未纳入本 commit。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-07T13:29:47.228Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "7f366c3",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2ccsfo_c32b30",
+      "title": "C2 拆分 AI 对话区 UI",
+      "module": "ai-orchestration",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "基于已验收组件体系提取消息、附件、输入器、提案卡和反馈操作，保持现有业务行为。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:40:35.314Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-07T13:01:28.051Z",
+          "note": "基于当前最新工作区状态开始 C2；assistant 模块已落到 src/features/assistant，并以 JourneyMapPage 为集成基线。 "
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-07T13:07:23.420Z",
+          "note": "本次提交与 C1 共用集成 commit ead10d9，但按模块边界审查只看列出的 C2 范围文件。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-07T13:09:33.973Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "ead10d9",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2ccsbm_448742",
+      "title": "C1 拆分应用壳和通用组件",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "提取路由、主题、TopBar、Field 和通用按钮，应用验收后的 Chakra 主题与 Recipe。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:40:35.167Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-07T13:01:25.994Z",
+          "note": "基于当前最新工作区状态开始 C1；应用壳、组件库页与通用展示组件已从 App.tsx 迁出，不回退到旧版大 App 结构。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-07T13:07:21.636Z",
+          "note": "本次提交与 C2 共用集成 commit ead10d9，但按模块边界审查只看列出的 C1 范围文件。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-07T13:09:31.768Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "ead10d9",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2ccs77_ee61cc",
+      "title": "A4 完成组件库视觉验收页",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "更新 /components 展示项目 Recipe、产品组件、明暗主题和关键状态；完成构建与视觉验收，不重构业务页。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:40:35.008Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-06T18:23:01.600Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-06T18:23:01.601Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-06T18:23:01.602Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": null,
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2ccs20_6e7417",
+      "title": "A3 建立组件 Recipe 与产品组件契约",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "用 Chakra Recipe 统一 Button、IconButton、Input、Textarea；定义 AppShell、TopBar、Chat、Proposal、Matrix 等产品组件状态和可访问行为。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:40:34.818Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-06T18:23:00.303Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-06T18:23:00.304Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-06T18:23:00.305Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": null,
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2ccrwv_ab0adb",
+      "title": "A2 建立 Chakra 主题与品牌 Token",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "基于 Chakra Token 和 semantic tokens 建立 theme.ts；只增加品牌、工作台语义及产品专用组件 Token，支持明暗主题。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:40:34.635Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-06T18:22:59.080Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-06T18:22:59.081Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-06T18:22:59.082Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": null,
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2ccrrz_16ff3c",
+      "title": "A1 确认 Chakra 设计基础与视觉方向",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "使用现有 Chakra UI v3，不新增重叠组件库；确定默认系统复用范围、Recipe 定制范围、专业工作台视觉方向和需保留的 DEMO 交互。产出 docs/design-foundation.md。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:40:34.460Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-06T18:22:57.703Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-06T18:22:57.704Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-06T18:22:57.705Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": null,
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2c2dzf_b64b57",
+      "title": "D1 清理旧代码并完成回归",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "删除替代后的旧实现和无理由魔法值，检查依赖边界，完成明暗主题、组件页、矩阵和 AI 流程回归。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:32:30.024Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-06T12:40:33.980Z",
+          "note": ""
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2c2dvt_265e5b",
+      "title": "C3 拆分 Journey Map 编辑器",
+      "module": "tool-runtime",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "提取工具栏、摘要、矩阵、行、单元格、情绪图和滚动条，通过文档命令访问领域。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:32:29.894Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-06T12:40:33.853Z",
+          "note": ""
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2c2ds4_527136",
+      "title": "C2 拆分 AI 对话区 UI",
+      "module": "ai-orchestration",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "提取消息、附件、输入器、提案卡和反馈操作，保持现有 API 与确认后应用行为。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:32:29.761Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-06T12:40:33.724Z",
+          "note": ""
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2c2do1_83821b",
+      "title": "C1 拆分应用壳和通用组件",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "提取路由、主题、TopBar、Field 和通用按钮，使用验收后的 Token 与组件契约。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:32:29.615Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-06T12:40:33.568Z",
+          "note": ""
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2c2djt_3e1481",
+      "title": "B2 提取 Journey Map 领域与导出",
+      "module": "tool-runtime",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "提取纯 TypeScript 领域、初始化、规范化、命令和导出；保持当前数据格式与 UI 行为兼容。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:32:29.462Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-07T06:20:46.419Z",
+          "note": "开始 B2：基于 B1 基线提取 Journey Map 正式 ToolDefinition、领域纯函数、命令与导出逻辑；仅做必要兼容接线，不进入 UI 组件拆分。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-07T06:48:49.583Z",
+          "note": "已基于 B1 基线完成 B2。工作区仍存在用户/其他模块未提交改动，未纳入本提交；对进入任务前已脏的 src/App.tsx 仅安全暂存了 B2 抽离接线相关 hunks。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-07T12:05:56.048Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "9e7ee22",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2c2dfz_047fb6",
+      "title": "B1 固化重构行为基线",
+      "module": "tool-runtime",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "补 Journey Map 初始化、规范化、单元格和导出测试，并建立关键交互回归清单。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:32:29.325Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-07T06:01:30.747Z",
+          "note": "开始 B1：只建立 Journey Map characterization tests、夹具和回归清单，不修改 App.tsx/UI/设计系统。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-07T06:09:16.170Z",
+          "note": "B1 仅新增测试、夹具和回归文档。未修改 App.tsx、styles.css、design-system 或 Chakra theme；未提前执行 B2 领域迁移。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-07T12:05:18.914Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "a68c9c2",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2c2dbg_fe3ba5",
+      "title": "A4 建立组件库视觉验收页",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "让 /components 使用正式 Token 展示明暗主题和关键状态；人工确认后才允许 UI 重构。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:32:29.161Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-06T12:40:33.418Z",
+          "note": ""
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2c2d7j_bacc89",
+      "title": "A3 定义组件规范与状态矩阵",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "为通用组件、对话组件和矩阵组件定义结构、变体、状态、键盘交互和 Token 映射。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:32:29.020Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-06T12:40:33.272Z",
+          "note": ""
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2c2d3p_7ff88c",
+      "title": "A2 定义基础与语义 Token",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "基于 A1 建立 primitive、semantic、component 三级 Token，并实现 tokens.css；业务组件不得直接引用原始色值。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:32:28.883Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-06T12:40:33.124Z",
+          "note": ""
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2c2czg_f55b8f",
+      "title": "A1 盘点 DEMO 视觉与交互",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "盘点组件、状态、交互和实际视觉值；区分保留效果、可归并值与例外；产出 design-audit 和明暗主题基线。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:32:28.729Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-06T12:40:32.964Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-06T12:40:32.965Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-06T12:40:32.966Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": null,
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2bqvay_b03a6d",
+      "title": "建立多工具工作台入口",
+      "module": "platform-shell",
+      "risk": "normal",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "基于工具注册表提供工具目录、项目入口和工具工作台路由，不复制应用壳。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.602Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-15T14:58:55.650Z",
+          "note": "Paused: 2026-06-15 按用户要求，除 Admin Console access and usage data fixes 外全部暂停。恢复时从最新 main 创建独立任务分支。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2bqvav_0baf33",
+      "title": "接入微信和支付宝适配器",
+      "module": "billing-entitlements",
+      "risk": "normal",
+      "task_type": "payment",
+      "review_required": true,
+      "description": "在账本规则通过审查后实现创建支付、回调验签、查单、退款和幂等发放。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.599Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-15T14:58:54.280Z",
+          "note": "Paused: 2026-06-15 按用户要求，除 Admin Console access and usage data fixes 外全部暂停。恢复时从最新 main 创建独立任务分支。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2bqvat_498c68",
+      "title": "定义商品订单和额度账本",
+      "module": "billing-entitlements",
+      "risk": "high",
+      "task_type": "payment",
+      "review_required": true,
+      "description": "建立订单状态机、CreditLedgerEntry、额度预占/提交/释放及对账规则，明确扣次产品策略。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.597Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-14T16:21:41.991Z",
+          "note": "由当前进行中的 P6（task_mqbrm0m5_490c4298）承接；P6 基于已存在订单/额度账本继续收口预占、提交、释放和幂等联动。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2bqvar_9b516f",
+      "title": "建立 API 基线",
+      "module": "persistence-backend",
+      "risk": "normal",
+      "task_type": "database",
+      "review_required": true,
+      "description": "统一输入校验、错误格式、请求 ID、审计日志、幂等键和对象存储引用。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.595Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-14T16:21:41.930Z",
+          "note": "早期 API 基线已在现有后端实现中落地，剩余列表、分页、错误码和 usage event 查询由 P7（task_mqbrm7rp_1d1b0ac9）承接。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2bqvao_a89e67",
+      "title": "设计项目与文档仓储",
+      "module": "persistence-backend",
+      "risk": "high",
+      "task_type": "database",
+      "review_required": true,
+      "description": "实现 Project/ToolDocument 仓储、revision 乐观锁、自动保存协议、鉴权与数据权限规则。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.591Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-14T16:21:41.872Z",
+          "note": "早期仓储设计任务已被现有 tool-documents 实现与 P7（task_mqbrm7rp_1d1b0ac9）后续查询接口任务替代。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2bqval_8f4c8e",
+      "title": "实现邮箱登录与 AuthPort",
+      "module": "identity-cloudbase",
+      "risk": "high",
+      "task_type": "auth",
+      "review_required": true,
+      "description": "实现注册、登录、登出、会话恢复和服务端身份验证；前端不持有 Admin 权限。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.589Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-06T18:56:04.417Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-14T16:20:00.367Z",
+          "note": "该早期任务已被整改任务 task_mq2prq2z_42f5cc 完整覆盖并通过独立审查，commit c4e81fc 已完成真实邮箱/手机号 OTP、会话恢复、登出和服务端鉴权验收。取消旧状态以消除重复。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2bqvai_e55c12",
+      "title": "盘点 CloudBase Skill/MCP 能力",
+      "module": "identity-cloudbase",
+      "risk": "high",
+      "task_type": "auth",
+      "review_required": true,
+      "description": "确认认证、数据库、云函数、对象存储和事务的实际可调用接口，记录能力与缺口。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.586Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-06T18:56:01.766Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-06T18:24:05.059Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-06T18:55:21.823Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "61da886",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mq2bqvag_15771d",
+      "title": "迁移 Journey Chat 适配器",
+      "module": "ai-orchestration",
+      "risk": "normal",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "把现有 GLM 调用迁移到 ModelProvider，保留确认后应用的交互和错误处理。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.584Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-15T14:58:52.853Z",
+          "note": "Paused: 2026-06-15 按用户要求，除 Admin Console access and usage data fixes 外全部暂停。恢复时从最新 main 创建独立任务分支。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2bqvad_83782e",
+      "title": "定义统一 Assistant 协议",
+      "module": "ai-orchestration",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "定义全局/工具请求、message/clarify/commands/recommend_tools 响应、Skill 版本和结构化校验。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.581Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-14T16:21:41.798Z",
+          "note": "由新阶段任务 P9（task_mqbrm7uw_c3d77881）替代；P9 以当前 Journey assistant 与多工具阶段为基线，范围更准确。"
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2bqvaa_5eb75a",
+      "title": "拆分应用壳与设计系统",
+      "module": "platform-shell",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "提取路由、Provider、TopBar、通用输入和矩阵基础组件，并让样式边界对应组件边界。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.578Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-06T12:32:28.441Z",
+          "note": ""
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2bqva7_fce89f",
+      "title": "迁移 Journey Map 领域逻辑",
+      "module": "tool-runtime",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "从 App.tsx 提取类型、初始化、规范化、命令与导出，补充纯函数测试，保持现有行为。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.575Z",
+          "note": ""
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-06T12:32:28.595Z",
+          "note": ""
+        }
+      ],
+      "status": "cancelled",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mq2bqva4_a80b33",
+      "title": "固化工具与文档契约",
+      "module": "tool-runtime",
+      "risk": "high",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "以 docs/project-architecture.md 为基线，建立 ToolDefinition、ToolDocument、命令、运行时 Schema 和版本迁移契约。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-06T12:23:32.572Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-06T19:13:52.153Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-06T19:13:52.154Z",
+          "note": ""
+        },
+        {
+          "action": "review",
+          "at": "2026-06-14T16:20:01.335Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": null,
+      "verdict": "approved"
+    }
+  ],
+  "reviews": [
+    {
+      "review_id": "review_mqi82ooa_1ed77c48",
+      "at": "2026-06-17T15:25:04.234Z",
+      "task_id": "task_mqi7yyzt_bd4137f7",
+      "verdict": "approved",
+      "comments": "批准。相对任务目标，这一版改动范围收得很小，只落在 `usage-recorder -> billing-config` 路径上，没有改 assistant 请求链路或结算编排本身；同时把计费记录语义补完整了：\n\n1. `server/application/assistant/usage-recorder.cjs` 现在明确区分两层状态：\n   - `status`: 生成流程结果（`failed` / `cancelled` / `succeeded`）\n   - `billingStatus`: 结算结果（`charged` / `not_charged`）\n   并且在非 `succeeded` 情况下强制把 `chargedCredits` 归零，避免出现“取消/失败但仍记账”的矛盾状态。\n\n2. `resolveBillingEventStatus()` 的映射也合理：\n   - `error -> failed`\n   - `clarify -> cancelled`\n   - `proposal/message -> succeeded`\n   - 无 error 且无 phase -> failed\n   这正好把之前“只看是否有 error”造成的语义空洞补上了。\n\n3. `server/application/billing-config.cjs` 已补齐 `billingStatus` 的校验、持久化和过滤，使这组新字段不只是写进去，还能被 billing 查询侧实际消费。\n\n4. 测试面足够覆盖这次变更的风险：从原来的 3 条扩到 23 条，既有状态/结算纯函数测试，也有 clarify / failed / null-response / chargedCredits 边界和 `billingStatus` filter 的集成测试。\n\n这轮改动没有扩到 assistant 结算主流程，也没有引入新的 worktree / branch 污染，可以批准进入完成态。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mqi6veo5_199c06df",
+      "at": "2026-06-17T14:51:25.061Z",
+      "task_id": "task_mqi6607k_ee86f5b1",
+      "verdict": "approved",
+      "comments": "批准。相对 `main` 的累计 diff 收敛在这轮任务自身的 8 个文件，没有混入其他支线或 `.worktrees/*` 污染；实现方向也对上了本任务目标：\n\n1. `server/application/billing/index.cjs` 新增了正式 `createAssistantBillingService()`，按 `toolKey/actionKey/tierKey` 读取 AI pricing，为每次 Journey assistant run 分配新的 `ai_run` reference，先 `reserve`，在 `proposal` 成功时 `commit`，在 `clarify` / `error` 时 `release`。\n\n2. `server/application/assistant/service.cjs` 现在在模型调用前后挂上 settlement 钩子，并把 `runId` 与 `chargedCredits` 传给 usage recorder；每次调用都会先创建新的 run，因此重试不会复用旧 reference。\n\n3. `server/application/assistant/usage-recorder.cjs` 已把真实 `chargedCredits` 写入 `ai_usage_events`，对应测试也从 0 改成了实际收费值。\n\n4. `server/journey-chat.cjs` 不再只在测试里 stub settlement，而是正式装配了 `billingService` + `billingConfigService` + `CloudBaseBillingRepository`，使 Journey assistant 宿主真正接上正式积分结算链。\n\n验证证据也匹配任务风险：构建、认证测试、billing / assistant / usage recorder / host 装配测试都已覆盖。本轮范围没有扩到支付 provider 或 admin flow，保持在用户要求的 Journey assistant 正式 AI 积分结算闭环内，可以批准完成。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mqi34c4z_ae5790fb",
+      "at": "2026-06-17T13:06:23.219Z",
+      "task_id": "task_mqfcql7y_832979ad",
+      "verdict": "approved",
+      "comments": "批准。前一轮阻断的两个点这次都已解决：\n\n1. `scripts/billing-acceptance-host.cjs` 不再自建 `InMemoryBillingRepository` + 平行 portal，而是直接把 `/api/billing` 转到仓库正式 `api/billing.js`，再进入 `server/billing-portal.cjs`、`CloudBaseAccessTokenVerifier` 和 `CloudBaseBillingRepository`。这使得本轮真实会话验收终于命中了项目当前正式 billing API 链路，而不是脚本里的假实现。\n\n2. 产品层匿名登录能力已撤回。`src/features/billing/BillingPanel.tsx` 不再依赖运行时 duck-typing 的 `signInAnonymously()`；前端 auth adapter 与对应测试里的匿名登录实现也已删除，Billing 页面重新只依赖正式 `AuthPort` 边界。\n\n附带修正也合理：`verify-access-token.mjs` 改到真实 CloudBase gateway 域名，并兼容 `user_id`，对应测试已补。相对 `main` 的累计 diff 也已经收敛到 Frontend Billing 任务自身范围：`package.json` 仅新增 `dev:billing-acceptance` 脚本，`BillingPanel` 保持用户侧读取边界，acceptance host 与 token verifier 的修改都服务于本轮缺失的正式 API 验收。\n\n结合上一轮已记录的页面层证据（未登录空状态、缺失配置错误态、构建与账本分页测试通过）和本轮新增的真实 session + 正式 `/api/billing` 分页结果，这条 Frontend Billing 任务的验收闭环已足够完成。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mqi2s52c_ce158a99",
+      "at": "2026-06-17T12:56:54.180Z",
+      "task_id": "task_mqdzqyr7_63fa9672",
+      "verdict": "approved",
+      "comments": "批准。`baa7775` 已把误提交的 `.worktrees/admin-console-task` gitlink 从分支累计 diff 中移除；我核对了 `git diff main...baa7775 -- .worktrees` 为空，`git diff --stat main...baa7775` 也不再包含任何 `.worktrees/*` 条目，因此这次仓库卫生级阻断已解除。\n\n上一轮关注的两个业务 P0 本轮没有被带坏：`server/journey-chat.cjs` 仍然通过 `getBillingConfigService()` 完成 assistant service 初始化，不再因未定义符号崩溃；`server/application/assistant/usage-recorder.cjs` 继续从真实 Journey 请求形状推导 `toolKey/actionKey/tierKey`，对应测试与 `server/journey-chat.test.cjs` 仍在累计 diff 内。当前相对 `main` 的任务 diff 聚焦在 admin access、usage/cost/ledger 正式读链路及其必要测试与接线，已不再夹带本地 worktree 污染，可以批准完成。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mqi2fh4x_93476c15",
+      "at": "2026-06-17T12:47:03.297Z",
+      "task_id": "task_mqdzqyr7_63fa9672",
+      "verdict": "changes_requested",
+      "comments": "[P0] 这条任务相对 `main` 的累计 diff 里误带入了一个 worktree gitlink：`.worktrees/admin-console-task`。我核对了 `git diff main...f906412 -- .worktrees/admin-console-task`，结果是一个 `mode 160000` 的 gitlink（`Subproject commit 397b8bd...`），并且 `git ls-tree -r f906412 .worktrees` 也能看到该路径。这意味着任务分支把本地 linked worktree 当成了仓库内容的一部分提交进来。这个会直接污染仓库历史，也会让其他人 clone/checkout 时看到一个意外的 submodule-like 条目，和我们前面专门立下的“worktree 只做隔离，不进入版本库”规则正面冲突。必须在再次提审前从任务 diff 中移除该 `.worktrees/*` gitlink。\n\n原先两条 P0 这次看起来已经收住了：`server/journey-chat.cjs` 现在明确引入并解析 `getBillingConfigService()`，不再因为未定义符号在 assistant 初始化时崩溃；`server/application/assistant/usage-recorder.cjs` 也开始从真实 Journey 请求形状推导 `toolKey/actionKey/tierKey`，并补了对应测试与 `server/journey-chat.test.cjs`。但在 `.worktrees` gitlink 还存在的前提下，这条任务仍不能批准。\n\n整改要求很简单：把 `.worktrees/admin-console-task` 从分支 diff 里彻底移除，再重新提交同一轮证据即可；其余这次针对两个 P0 的修复方向我没有再新增业务层阻断。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mqgq4pxc_a477b80b",
+      "at": "2026-06-16T14:14:59.904Z",
+      "task_id": "task_mqfcql7y_832979ad",
+      "verdict": "changes_requested",
+      "comments": "[P0] `scripts/billing-acceptance-host.cjs:31-35` 将 `/api/billing` 直接接到脚本内自建 handler，后面在 `134-148` 又明确 new 了 `InMemoryBillingRepository` 并用 `createBillingPortalService(...)` 组装 portal。也就是说，这次“真实登录态验收”验证到的只是“真实 token + 本地假账本 host”，并没有覆盖仓库当前正式链路里的 `api/billing.js` / `server/billing-portal.cjs` / 正式 billing repository。上一轮阻塞点要求的是补真实登录态与带 API 的验收证据；如果 API 被验收脚本替换成内存实现，这个证据链仍然不成立。\n\n[P1] `src/infrastructure/cloudbase/auth/auth-adapter-core.ts:203-217` 新增了 `signInAnonymously()`，但 `src/features/account/auth-port.ts:24-32` 的 `AuthPort` 契约没有这个方法，于是 `src/features/billing/BillingPanel.tsx:292-300` 只能通过 `getAnonymousAuth()` 做运行时 duck-typing。这个做法没有立刻破坏生产路径，但它把一个新认证能力藏在契约之外，后续很难判断哪些页面真的依赖它。若匿名登录只是本地验收手段，建议把它留在验收 host/脚本层，不要让产品组件依赖一个未声明的 auth 能力。\n\n建议整改方向：保留你现在补出来的真实 token 获取方法，但让验收请求命中仓库当前正式 `/api/billing` 实现，而不是脚本内的 `InMemoryBillingRepository`。如果本地需要一体化 host，可以在 host 里复用现有 `api/billing.js`/`server/billing-portal.cjs` 装配，而不是重写一个平行的 billing portal。完成后再补一次真实会话 + 实际 `/billing` 页面分页验收证据。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mqgpn1vw_c2a6cfa7",
+      "at": "2026-06-16T14:01:15.596Z",
+      "task_id": "task_mqdzqyr7_63fa9672",
+      "verdict": "changes_requested",
+      "comments": "需要修改后再提审。\n\n[P0] server/journey-chat.cjs:26-32 在 createToolDocumentAssistantUsageRecorder({...}) 调用里传入了 billingConfigService，但这个符号在文件中没有定义或 require。当前提交一旦首次调用 getAssistantService()，运行时就会抛 ReferenceError，Journey assistant 请求会直接失败。这是阻断级问题，因为它不是数据缺失，而是主链路启动即崩。\n\n[P0] 本次新增的 ai_usage_events 正式写入依赖 request.toolKey / request.actionKey / request.tierKey（见 server/application/assistant/usage-recorder.cjs 的新增 billingConfigService.recordAiUsageEvent 分支），但真实 Journey 请求构造并没有提供这些字段：src/features/assistant/api.ts:58-79 只发送了 toolId / skillId / skillVersion / document / context / messages。测试里手工伪造了 toolKey/actionKey/tierKey，所以 usage-recorder.test.cjs 能通过，但生产请求会在 recordAiUsageEvent 校验时失败并被 recorder 静默吞掉，结果是 /admin/billing 的 ai_usage_events 仍然可能为空，和本任务目标不符。\n\n其余方向基本合理：admin 角色传播、最小只读后台页面和异常态处理都在正确方向上。但以上两项必须先修，否则无法批准这条“正式读取链路已打通”的结论。",
+      "reviewer": "codex-reviewer"
+    },
+    {
+      "review_id": "review_mqgpizks_7994c65a",
+      "at": "2026-06-16T13:58:05.980Z",
+      "task_id": "task_mqgo81lm_95054135",
+      "verdict": "approved",
+      "comments": "批准。提交 3e7a357 将正式 tool-documents 宿主从 InMemoryToolDocumentRepository 切到 CloudBaseToolDocumentRepository，并把 service 初始化改为懒获取，避免 journey-chat 继续绑定旧的 eager 内存实例。宿主现在按 __cloudbaseDatabase -> tcb.database() -> cloudbase.database() 解析数据库，缺失时返回明确的 CLOUDBASE_DATABASE_UNAVAILABLE 错误；新增 server/tool-documents.test.cjs 补上宿主层装配与缺少数据库时的失败路径。提交范围与任务一致，.worktrees/ 的 .gitignore 变更也保持在事先批准的最小范围内。验证证据充分：node --test server/tool-documents.test.cjs server/application/tool-documents.test.cjs server/infrastructure/cloudbase/tool-documents/repository.test.cjs 14/14 通过，npm run build 通过，git diff --check 通过（仅 LF/CRLF 警告）。残余风险不构成当前阻塞：仍需后续在真实 CloudBase 宿主环境完成端到端保存/恢复验收，但这属于部署验收，不阻塞本轮宿主切换批准。",
+      "reviewer": "codex-reviewer"
+    },
+    {
+      "review_id": "review_mqfdrspf_7ef275ca",
+      "at": "2026-06-15T15:41:15.411Z",
+      "task_id": "task_mqfcql7y_832979ad",
+      "verdict": "changes_requested",
+      "comments": "实现层面基本成立：/billing 页面、静态路由复制、用户侧 /api/billing BFF、基于 access token user.id 的账户隔离，以及账本分页都已接回当前 main；新增的 billing-portal 测试、billing-config 测试和 CloudBase billing repository 测试共 28/28 通过，npm run build 通过。阻塞合并的唯一原因是验收证据仍不完整：本地环境里 in-app Browser 插件初始化失败，且静态 Vite preview 不承载 /api/billing 运行时，因此我只能实际验证未登录空状态和缺少 CloudBase 配置时的错误态，未能完成用户要求的真实登录态与浏览器分页验收。建议补一个可运行前后端一体的本地验收环境或提供可复用登录会话后再批准合并。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mqdzpsqe_4fec3f2f",
+      "at": "2026-06-14T16:20:01.334Z",
+      "task_id": "task_mq2bqva4_a80b33",
+      "verdict": "approved",
+      "comments": "状态对账批准：该早期契约任务已由整改任务 task_mq2prp1d_491bd1 在 commit d0325c6 补齐 create/apply/migrate/export/registry 契约测试并经独立审查通过，后续 B1/B2 也已完成。此次仅闭合滞留的 review 状态。",
+      "reviewer": "status-reconciliation"
+    },
+    {
+      "review_id": "review_mqdz3yt6_293686ff",
+      "at": "2026-06-14T16:03:02.778Z",
+      "task_id": "task_mqdjs0tg_d8d41427",
+      "verdict": "approved",
+      "comments": "唯一阻断已解决。f65b02f 的父提交为 eb1e28c，且仅在同步检查比较前统一 CRLF、CR 和 LF，不会掩盖实际内容差异。独立 worktree 中 docs/design-tokens.md 含 121 个 CRLF，check:design-tokens 与完整 build 均通过。设计 Token 单一真源、Chakra 构建、示例去重及文档生成结构批准。",
+      "reviewer": "subagent:Mill"
+    },
+    {
+      "review_id": "review_mqdkv4qd_ed545202",
+      "at": "2026-06-14T09:24:15.926Z",
+      "task_id": "task_mqdjs0tg_d8d41427",
+      "verdict": "changes_requested",
+      "comments": "阻断项：提交 eb1e28c 在 Windows 新检出的干净副本中无法通过其新增的 npm run check:design-tokens，因此 npm run build 也会在第一步失败。原因是 scripts/sync-design-tokens.cjs 使用 current !== markdown 做逐字节字符串比较并以 LF 生成内容，而仓库 core.autocrlf=true，检出的 docs/design-tokens.md 为 CRLF；内容语义相同仍被判定不同步。请在比较前规范化换行（或明确用 .gitattributes 固定生成文件为 LF），重新生成并提交 docs/design-tokens.md，然后在新的干净检出中复跑 check:design-tokens 与 build。其余已审部分未发现阻断：design-tokens.json 能生成 Chakra semantic color/shadow token；TypeScript 在同步后可构建；/components 已从 token-source 读取色板，不再维护重复色值；文档表格由脚本生成。",
+      "reviewer": "codex-reviewer"
+    },
+    {
+      "review_id": "review_mq3ufwdr_c14796e6",
+      "at": "2026-06-07T13:54:39.663Z",
+      "task_id": "task_mq2ccsot_3dfbc5",
+      "verdict": "approved",
+      "comments": "D1 通过。提交 36a05fd 已将 /components 切到已存在的 Chakra-first ComponentLibraryPage，删除了不再使用的旧 inline 组件库实现以及 SpecCard/ComponentDemo 两个遗留组件；同时把 src/styles.css 顶部那套自定义颜色/字体根变量改成对 Chakra token 的别名，并移除了旧组件库演示页面的整段遗留 CSS。Journey 基线、Journey 工具、tool-runtime 组合测试与 npm run build 全部通过，且构建后 CSS 体积下降。残余风险已明确隔离：README、docs/design-system.md、tsconfig.json、vercel.json、vite 配置、api/server 与其他文档改动仍在工作区，但未被纳入本次 D1 commit。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mq3tjwt5_2696ec9b",
+      "at": "2026-06-07T13:29:47.225Z",
+      "task_id": "task_mq2ccsle_90c38a",
+      "verdict": "approved",
+      "comments": "C3 通过。Journey Map 编辑器页面层已从大页面实现中拆出 EmotionRow、SplitterRow 与 MatrixScrollbars，JourneyMapPage 继续建立在 B2 已验收的正式 tool-runtime 上；tool registry 改为直接依赖 journey-map/tool，tool-runtime 测试编译配置也避免再把 TSX 页面层编进契约测试。复跑 Journey 基线、Journey 工具、tool-runtime 组合测试以及 npm run build 均通过。本次提交 7f366c3 只包含 C3 范围 6 个文件，未再混入 README、样式、部署配置和文档等其他未提交改动，Git 包装已明显好于 ead10d9。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mq3stwnk_ba0776ff",
+      "at": "2026-06-07T13:09:33.968Z",
+      "task_id": "task_mq2ccsfo_c32b30",
+      "verdict": "approved",
+      "comments": "C2 通过。assistant 模块已落到 src/features/assistant，JourneyAssistantPanel、API、类型和导出入口完整，JourneyMapPage 以最小装配方式接入 assistant 面板，并保持 clarify 只提问、proposal 需确认、继续调整只回填输入框的既有行为。build、Journey 基线、Journey 工具和 tool-runtime 相关测试通过。与 C1 共用集成 commit ead10d9 的 Git 包装问题单独记录，不阻塞功能验收。",
+      "reviewer": "lite-reviewer-host-c2"
+    },
+    {
+      "review_id": "review_mq3stuye_88e9ce0e",
+      "at": "2026-06-07T13:09:31.766Z",
+      "task_id": "task_mq2ccsbm_448742",
+      "verdict": "approved",
+      "comments": "C1 通过。当前代码已将应用壳、页面切换、TopBar、FieldLabel、组件库页和通用展示组件从原大 App.tsx 迁出，App.tsx 收缩为最薄装配层，Journey 页面通过 renderJourney 挂接；build 和 Journey/tool-runtime 相关测试通过。注意本次提交与 C2 共用集成 commit ead10d9，Git 包装不理想，但按模块边界审查列出的 C1 文件范围可以批准。",
+      "reviewer": "lite-reviewer-host-c1"
+    },
+    {
+      "review_id": "review_mq3qk2q6_f983af4a",
+      "at": "2026-06-07T12:05:56.046Z",
+      "task_id": "task_mq2c2djt_3e1481",
+      "verdict": "approved",
+      "comments": "B2 通过。提交 9e7ee22 已将 Journey Map 抽为正式 tool-runtime 工具，新增 ToolDefinition、内容校验、命令应用、proposal 映射和 md/json/csv/svg 导出，并注册进 toolRegistry。Journey 基线测试、Journey 工具测试、tool-runtime 组合测试和 npm run build 均复跑通过；页面层只做最小兼容接线，未提前进入 C3 组件拆分。",
+      "reviewer": "lite-reviewer-host-b2"
+    },
+    {
+      "review_id": "review_mq3qja2n_268a55c2",
+      "at": "2026-06-07T12:05:18.911Z",
+      "task_id": "task_mq2c2dfz_047fb6",
+      "verdict": "approved",
+      "comments": "B1 通过。提交 a68c9c2 建立了 Journey Map 重构前行为基线，新增基线文档、代表性夹具、AST 抽取器和 8 条 characterization tests，覆盖初始化、proposal 规范化、情绪值与备注、导出表示和 confirm-before-apply 约束。复跑基线测试通过，未越界修改生产 UI 或设计系统。",
+      "reviewer": "lite-reviewer-host-b1"
+    },
+    {
+      "review_id": "review_mq3d2f15_336990da",
+      "at": "2026-06-07T05:48:17.177Z",
+      "task_id": "task_mq2prq2z_42f5cc",
+      "verdict": "approved",
+      "comments": "整改通过。提交 c4e81fc 已挂载 /account 路由并兼容尾斜杠访问，移除前端硬编码 CloudBase 配置回退，仅接受显式 publishable key；缺失配置会在 AccountPage 上显式失败。认证适配器已补邮箱/手机号 OTP、配置错误、网络异常、会话恢复为空和退出失败等测试；构建流程新增 dist/account/index.html 产物。提交同时记录了 CloudBase 托管域名 /account/ HTTP 200 以及真实邮箱、手机号 OTP 登录、重复 user/me 会话读取、token introspect 和退出后 user/me=unauthenticated 的验收证据，满足本轮整改要求。",
+      "reviewer": "lite-reviewer-host-auth"
+    },
+    {
+      "review_id": "review_mq3d2d1o_3d4c3955",
+      "at": "2026-06-07T05:48:14.604Z",
+      "task_id": "task_mq2prp1d_491bd1",
+      "verdict": "approved",
+      "comments": "整改通过。提交 d0325c6 已补齐 create/apply/migrate/export/registry 的契约级测试，并收紧相邻迁移、注册表定义校验与 JSON 无损序列化边界。已覆盖 revision 冲突、迁移缺失/跨级、重复与未知 toolId、定义非法、JSON 序列化边界，以及 Journey Map 当前数据、proposal 命令与 JSON 导出的兼容性。本轮剩余可做项属于后续 B1/B2 强化，不构成当前整改阻塞。",
+      "reviewer": "lite-reviewer-tool-runtime"
+    },
+    {
+      "review_id": "rev_mq2pr2vs_d9e62e",
+      "at": "2026-06-06T18:55:37.048Z",
+      "task_id": "task_mq2ccsot_3dfbc5",
+      "verdict": "approved",
+      "comments": "Chakra-first 设计基础、主题 Token、Recipe、产品组件契约和 /components 验收页范围符合 A1-A4。构建与明暗主题/路由检查通过，未迁移 Journey Map 业务结构。批准作为后续 UI 重构基线。",
+      "reviewer": "legacy-global-reviewer"
+    },
+    {
+      "review_id": "rev_mq2pqr4v_74674c",
+      "at": "2026-06-06T18:55:21.823Z",
+      "task_id": "task_mq2bqvai_e55c12",
+      "verdict": "changes_requested",
+      "comments": "build 和服务端 3/3 单测通过，但认证闭环尚未达到验收线。需补真实 CloudBase 托管域名上的邮箱/手机号 OTP 登录、退出、会话恢复与过期验证；挂载并验证 /account 或等价入口及未认证访问；覆盖错误码和网络异常；确认前端仅包含 publishable key，缺失配置应明确失败。",
+      "reviewer": "legacy-global-reviewer"
+    },
+    {
+      "review_id": "rev_mq2pow0f_d06480",
+      "at": "2026-06-06T18:53:54.831Z",
+      "task_id": "task_mq2ccsle_90c38a",
+      "verdict": "changes_requested",
+      "comments": "构建通过只能证明类型与打包成立，尚不足以批准稳定契约。需补充：迁移链与旧文档升级测试；revision 冲突、生成和重试边界测试；重复/未知工具及异常注册测试；序列化边界；Journey Map 现有数据、导出和 AI proposal 的无损适配验证。",
+      "reviewer": "legacy-global-reviewer"
+    },
+    {
+      "review_id": "rev_mq2po7wu_13950b",
+      "at": "2026-06-06T18:53:23.598Z",
+      "task_id": "task_mq2bqval_8f4c8e",
+      "verdict": "approved",
+      "comments": "68b1dba 的能力盘点范围明确，区分官方能力、推荐边界与待环境实测项，足以支撑后续架构设计。提交仅新增文档，未越界实施资源变更。后续 afa75cc 已用真实环境结果更新当时的 MCP 状态，实施应以当前文档为准。",
+      "reviewer": "legacy-global-reviewer"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "handoff_mq3qnhx2_17b2f819",
+      "at": "2026-06-07T12:08:35.702Z",
+      "from": "host",
+      "to": "tool-runtime",
+      "task_id": "task_mq2ccsle_90c38a",
+      "message": "C3 开始前必须读取 docs/c-phase-app-boundary-freeze.md 和 docs/c-phase-module-prompts.md。App.tsx 在 C 阶段只允许保留最薄装配；C3 负责 JourneyMapTool 编辑器主体、SplitterRow、EmotionRow、MatrixScrollbars 和 stage/row/cell 页面接线的迁出。必须继续以 B2 的正式 Journey Map 工具运行时为事实来源，并保持 B1/B2 测试通过。",
+      "status": "resolved",
+      "resolution": "C3 已在 commit 7f366c3 完成并通过审查，交接已履行。",
+      "resolved_at": "2026-06-14T16:20:04.427Z"
+    },
+    {
+      "id": "handoff_mq3qngg8_95e32c19",
+      "at": "2026-06-07T12:08:33.800Z",
+      "from": "host",
+      "to": "ai-orchestration",
+      "task_id": "task_mq2ccsfo_c32b30",
+      "message": "C2 开始前必须读取 docs/c-phase-app-boundary-freeze.md 和 docs/c-phase-module-prompts.md。App.tsx 在 C 阶段只允许保留最薄装配；C2 负责聊天面板、消息列表、proposal preview、composer、附件和反馈动作的迁出。clarify 只显示问题，proposal 必须确认，继续调整只回填输入框。",
+      "status": "resolved",
+      "resolution": "C2 已在 commit ead10d9 完成并通过审查，交接已履行。",
+      "resolved_at": "2026-06-14T16:20:03.452Z"
+    },
+    {
+      "id": "handoff_mq3qneez_b0908f75",
+      "at": "2026-06-07T12:08:31.163Z",
+      "from": "host",
+      "to": "platform-shell",
+      "task_id": "task_mq2ccsbm_448742",
+      "message": "C1 开始前必须读取 docs/c-phase-app-boundary-freeze.md 和 docs/c-phase-module-prompts.md。App.tsx 在 C 阶段只允许保留最薄装配；C1 负责 App、TopBar、FieldLabel、ComponentLibrary、SpecCard、ComponentDemo 及页面切换/壳层组合逻辑的迁出。不得修改 Journey 领域规则、AI 请求协议或工具命令语义。",
+      "status": "resolved",
+      "resolution": "C1 已在 commit ead10d9 完成并通过审查，交接已履行。",
+      "resolved_at": "2026-06-14T16:20:02.448Z"
+    },
+    {
+      "id": "msg_mq2nolkt_46d189",
+      "at": "2026-06-06T17:57:42.077Z",
+      "from": "identity-cloudbase",
+      "to": "persistence-backend",
+      "task_id": "task_mq2bqval_8f4c8e",
+      "message": "服务端 Bearer token 验证器已提供于 `server/infrastructure/cloudbase/auth/verify-access-token.mjs`，通过 CloudBase `/auth/v1/user/me` 返回稳定身份。后端 API 应从 Authorization 头验证身份，不信任请求体 userId。",
+      "status": "resolved",
+      "resolution": "Bearer token 验证器及服务端身份边界已纳入认证整改验收，交接约束继续作为后端契约保留。",
+      "resolved_at": "2026-06-14T16:20:06.661Z"
+    },
+    {
+      "id": "msg_mq2nojgp_7fb7d3",
+      "at": "2026-06-06T17:57:39.338Z",
+      "from": "identity-cloudbase",
+      "to": "platform-shell",
+      "task_id": "task_mq2bqval_8f4c8e",
+      "message": "账号模块已提供 `AccountPage`、`AuthProvider` 和 `AccountAuthPanel`，导出入口为 `src/features/account/index.ts`。请在平台路由验收后挂载 `/account`；identity 模块未修改当前脏的 App.tsx/main.tsx。",
+      "status": "resolved",
+      "resolution": "/account 已由认证整改任务挂载并完成真实 CloudBase 验收，交接已履行。",
+      "resolved_at": "2026-06-14T16:20:05.460Z"
+    }
+  ]
+}
