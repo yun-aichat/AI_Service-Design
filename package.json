@@ -2,7 +2,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "dev:billing-acceptance": "node scripts/billing-acceptance-host.cjs",
-    "build": "tsc --noEmit && vite build && node scripts/prepare-static-routes.cjs",
+    "build": "node scripts/generate-roundtable-viz-data.cjs && tsc --noEmit && vite build && node scripts/prepare-static-routes.cjs",
     "preview": "vite preview --host 127.0.0.1",
     "test:auth": "tsc --ignoreConfig --ignoreDeprecations 6.0 --target ES2022 --module CommonJS --moduleResolution Node --rootDir src --outDir .plugin-staging/auth-tests --esModuleInterop --skipLibCheck src/features/account/auth-port.ts src/infrastructure/cloudbase/auth/config-core.ts src/infrastructure/cloudbase/auth/auth-adapter-core.ts && node --test server/infrastructure/cloudbase/auth/*.test.cjs"
   },

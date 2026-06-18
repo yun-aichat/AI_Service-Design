@@ -6,6 +6,7 @@ import { designSystem } from "./design-system/theme";
 import { AccountPage } from "./features/account";
 import { AdminPage } from "./features/admin";
 import { BillingPage } from "./features/billing";
+import RoundtableLitePage from "./features/roundtable-lite/RoundtableLitePage";
 import "./styles.css";
 
 const path = window.location.pathname.replace(/\/+$/, "") || "/";
@@ -16,6 +17,8 @@ const RootPage =
       ? AdminPage
       : path === "/billing"
         ? BillingPage
+      : path === "/roundtable"
+        ? RoundtableLitePage
         : App;
 
 createRoot(document.getElementById("root")!).render(
