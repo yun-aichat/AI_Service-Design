@@ -15,6 +15,8 @@ async function handleBillingConfig(request) {
   const service = getBillingConfigService();
 
   switch (action) {
+    case "debugAuthProfile":
+      return { user };
     case "listCreditPackages":
       return service.listCreditPackages({ ...body, user });
     case "listAiActionPricing":

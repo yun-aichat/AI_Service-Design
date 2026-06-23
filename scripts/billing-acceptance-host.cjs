@@ -1,14 +1,25 @@
 const http = require("node:http");
 const { createServer: createViteServer } = require("vite");
 const billingApiHandler = require("../api/billing.js");
+const billingConfigApiHandler = require("../api/billing-config.js");
+const journeyChatApiHandler = require("../api/journey-chat.js");
+const toolDocumentsApiHandler = require("../api/tool-documents.js");
 const {
   BILLING_COLLECTIONS,
 } = require("../server/infrastructure/cloudbase/billing/repository.cjs");
+const {
+  createAcceptanceDatabase,
+  routeAcceptanceApiRequest,
+} = require("./acceptance-host-support.cjs");
 
 const HOST = process.env.BILLING_ACCEPTANCE_HOST || "127.0.0.1";
 const PORT = Number(process.env.BILLING_ACCEPTANCE_PORT || 4173);
 const seededAccounts = new Set();
+const previousAnonymousMode = process.env.PERSISTENCE_ALLOW_ANONYMOUS;
+const previousUnverifiedBearerMode = process.env.PERSISTENCE_ALLOW_UNVERIFIED_BEARER;
 const database = createAcceptanceDatabase();
+process.env.PERSISTENCE_ALLOW_ANONYMOUS = "1";
+process.env.PERSISTENCE_ALLOW_UNVERIFIED_BEARER = "1";
 
 globalThis.__cloudbaseDatabase = database;
 
@@ -30,12 +41,16 @@ async function start() {
 
   const server = http.createServer(async (request, response) => {
     try {
-      if (request.url === "/api/billing") {
-        ensureAcceptanceLedgerSeed(request.headers.authorization);
-        billingApiHandler(request, response);
-        return;
-      }
-      vite.middlewares(request, response);
+      await routeAcceptanceApiRequest({
+        request,
+        response,
+        viteMiddlewares: vite.middlewares,
+        billingApiHandler,
+        billingConfigApiHandler,
+        toolDocumentsApiHandler,
+        journeyChatApiHandler,
+        ensureAcceptanceLedgerSeed,
+      });
     } catch (error) {
       vite.ssrFixStacktrace(error);
       sendJson(response, 500, {
@@ -52,6 +67,16 @@ async function start() {
 
   const stop = async () => {
     delete globalThis.__cloudbaseDatabase;
+    if (previousAnonymousMode === undefined) {
+      delete process.env.PERSISTENCE_ALLOW_ANONYMOUS;
+    } else {
+      process.env.PERSISTENCE_ALLOW_ANONYMOUS = previousAnonymousMode;
+    }
+    if (previousUnverifiedBearerMode === undefined) {
+      delete process.env.PERSISTENCE_ALLOW_UNVERIFIED_BEARER;
+    } else {
+      process.env.PERSISTENCE_ALLOW_UNVERIFIED_BEARER = previousUnverifiedBearerMode;
+    }
     await vite.close();
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
@@ -333,83 +358,6 @@ function decodeJwtPayload(token) {
     return null;
   }
 }
-
-function createAcceptanceDatabase() {
-  const stores = Object.fromEntries(
-    Object.values(BILLING_COLLECTIONS).map((name) => [name, new Map()]),
-  );
-
-  return {
-    stores,
-    collection(name) {
-      const store = stores[name];
-      if (!store) throw new Error(`Unknown collection "${name}".`);
-      return createCollection(store);
-    },
-  };
-}
-
-function createCollection(store) {
-  return {
-    async get() {
-      return { data: [...store.values()].map(cloneJson) };
-    },
-    doc(id) {
-      return {
-        async get() {
-          return { data: store.has(id) ? cloneJson(store.get(id)) : null };
-        },
-      };
-    },
-    where(query) {
-      const matched = () =>
-        [...store.values()].filter((record) =>
-          Object.entries(query).every(([key, value]) => record?.[key] === value),
-        );
-      return createQuery(matched);
-    },
-  };
-}
-
-function createQuery(matched, state = {}) {
-  const nextState = {
-    orderByFields: state.orderByFields || [],
-    skipValue: state.skipValue || 0,
-    limitValue: state.limitValue ?? null,
-  };
-
-  return {
-    orderBy(field, direction) {
-      return createQuery(matched, {
-        ...nextState,
-        orderByFields: [...nextState.orderByFields, { field, direction }],
-      });
-    },
-    skip(value) {
-      return createQuery(matched, {
-        ...nextState,
-        skipValue: value,
-      });
-    },
-    limit(value) {
-      return createQuery(matched, {
-        ...nextState,
-        limitValue: value,
-      });
-    },
-    async get() {
-      const ordered = applyOrdering(matched(), nextState.orderByFields);
-      const sliced = ordered.slice(
-        nextState.skipValue,
-        nextState.limitValue === null
-          ? undefined
-          : nextState.skipValue + nextState.limitValue,
-      );
-      return { data: sliced.map(cloneJson) };
-    },
-  };
-}
-
 function applyOrdering(records, orderByFields) {
   if (!orderByFields.length) return records.map(cloneJson);
   return [...records].sort((left, right) => {

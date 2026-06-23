@@ -47,6 +47,16 @@ export type AiUsageEventRecord = {
   createdAt: string;
 };
 
+export type BillingAuthProfile = {
+  user: {
+    id: string;
+    email: string | null;
+    phone: string | null;
+    displayName: string | null;
+    roles: string[];
+  };
+};
+
 export class BillingConfigRequestError extends Error {
   code: string | null;
   status: number;
@@ -108,4 +118,8 @@ export async function listAiUsageEvents(input?: {
   sortDirection?: string;
 }): Promise<BillingPage<AiUsageEventRecord>> {
   return requestBillingConfig("listAiUsageEvents", input);
+}
+
+export async function debugAuthProfile(): Promise<BillingAuthProfile> {
+  return requestBillingConfig("debugAuthProfile");
 }

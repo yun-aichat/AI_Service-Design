@@ -73,6 +73,68 @@ test("restores a valid session and treats an expired session as signed out", asy
   assert.equal(await expiredAdapter.getSession(), null);
 });
 
+test("restores top-level admin role strings from the CloudBase session", async () => {
+  const adapter = new CloudBaseAuthAdapter(
+    createClient({
+      getSession: async () => ({
+        data: {
+          session: {
+            access_token: "admin-token",
+            user: {
+              id: "admin-user-1",
+              phone_number: "+8613828318136",
+              role: "admin",
+            },
+          },
+        },
+      }),
+    })
+  );
+
+  const session = await adapter.getSession();
+  assert.deepEqual(session.user.roles, ["admin"]);
+});
+
+test("restores CloudBase top-level role values into session roles", () => {
+  const session = toAuthSession({
+    access_token: "token",
+    user: {
+      id: "user-role-only",
+      phone: "+8613828318136",
+      role: ["admin"],
+    },
+  });
+
+  assert.deepEqual(session.user.roles, ["admin"]);
+});
+
+test("maps internal CloudBase administrators into admin session roles", () => {
+  const session = toAuthSession({
+    access_token: "token",
+    user: {
+      id: "internal-admin-user",
+      phone: "+8613828318136",
+      internal_user_type: "administrator",
+    },
+  });
+
+  assert.deepEqual(session.user.roles, ["admin"]);
+});
+
+test("reads object-shaped CloudBase role identities into session roles", () => {
+  const session = toAuthSession({
+    access_token: "token",
+    user: {
+      id: "object-role-user",
+      phone: "+8613828318136",
+      groups: [{ RoleIdentity: "admin" }],
+      roles: [{ roleIdentity: "billing-admin" }],
+    },
+  });
+
+  assert.deepEqual(session.user.roles, ["admin", "billing-admin"]);
+});
+
 test("sends and verifies email OTP through the CloudBase client", async () => {
   let request;
   let verification;
@@ -144,6 +206,51 @@ test("sends and verifies phone OTP through the CloudBase client", async () => {
   assert.equal(request.phone, "+8613800138000");
   assert.equal(verification.phone, "+8613800138000");
   assert.equal(session.user.phone, "+8613800138000");
+});
+
+test("uses signUp for phone OTP when createUser is enabled so new numbers can register", async () => {
+  let signUpRequest = null;
+  let signInWithOtpCalled = false;
+  let verification = null;
+  const adapter = new CloudBaseAuthAdapter(
+    createClient({
+      signUp: async (input) => {
+        signUpRequest = input;
+        return {
+          data: {
+            verifyOtp: async (input) => {
+              verification = input;
+              return {
+                data: {
+                  session: {
+                    access_token: "signup-phone-token",
+                    user: { id: "signup-phone-user", phone_number: "+8613900139000" },
+                  },
+                },
+              };
+            },
+          },
+        };
+      },
+      signInWithOtp: async () => {
+        signInWithOtpCalled = true;
+        return { data: {} };
+      },
+    })
+  );
+
+  const challenge = await adapter.requestOtp({
+    channel: "phone",
+    destination: "13900139000",
+    createUser: true,
+  });
+  const session = await challenge.verify("112233");
+
+  assert.equal(signInWithOtpCalled, false);
+  assert.deepEqual(signUpRequest, { phone: "+8613900139000" });
+  assert.deepEqual(verification, { token: "112233", phone: "+8613900139000" });
+  assert.equal(session.user.id, "signup-phone-user");
+  assert.equal(session.user.phone, "+8613900139000");
 });
 
 test("preserves CloudBase error codes and classifies network failures", async () => {

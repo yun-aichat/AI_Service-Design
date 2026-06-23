@@ -11,6 +11,7 @@ import {
   type CreditPackage,
   type PageResult,
 } from "../../infrastructure/cloudbase/billing/api";
+import { getBillingRedirectPath } from "./billing-access";
 import { CreditBalanceCard } from "./CreditBalanceCard";
 import { CreditPackageList } from "./CreditPackageList";
 import { LedgerHistory } from "./LedgerHistory";
@@ -70,39 +71,22 @@ export function BillingPanel() {
     void loadLedgerPage(0);
   }, [session, loadBillingData, loadLedgerPage]);
 
+  useEffect(() => {
+    const redirectPath = getBillingRedirectPath({
+      authLoading,
+      hasSession: Boolean(session),
+    });
+    if (redirectPath) {
+      window.location.replace(redirectPath);
+    }
+  }, [authLoading, session]);
+
   if (authLoading) {
     return <LoadingCard message="正在恢复登录状态..." />;
   }
 
   if (!session) {
-    return (
-      <Box
-        bg="bg.surface"
-        borderColor="border.default"
-        borderRadius="xl"
-        borderWidth="1px"
-        boxShadow="sm"
-        p={{ base: "5", md: "8" }}
-      >
-        <Stack gap="4">
-          <Box>
-            <Text color="fg.muted" fontSize="xs" fontWeight="medium">BILLING</Text>
-            <Heading fontSize="lg" mt="1">积分中心</Heading>
-          </Box>
-          <Text color="fg.muted" fontSize="sm">请先登录以查看积分余额、购买状态和账本历史。</Text>
-          <Button
-            alignSelf="start"
-            onClick={() => { window.location.href = "/account"; }}
-            size="sm"
-            variant="outline"
-          >
-            前往登录
-          </Button>
-          {error ? <Text color="status.errorFg" fontSize="sm">{error}</Text> : null}
-          {authError ? <Text color="status.errorFg" fontSize="sm">{authError}</Text> : null}
-        </Stack>
-      </Box>
-    );
+    return <LoadingCard message={authError || error || "正在跳转到登录页面..."} />;
   }
 
   return (

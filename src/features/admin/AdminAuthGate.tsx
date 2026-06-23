@@ -1,8 +1,7 @@
 import { Box, Button, Heading, Stack, Text } from "@chakra-ui/react";
 import type { ReactNode } from "react";
 import { useAuth } from "../account/AuthProvider";
-
-const ADMIN_ROLES = ["admin", "billing-admin"];
+import { canEnterAdminConsole } from "./admin-access";
 
 export function AdminAuthGate({ children }: { children: ReactNode }) {
   const { session, loading, error } = useAuth();
@@ -31,8 +30,7 @@ export function AdminAuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  const roles = session.user.roles || [];
-  if (!roles.some((role) => ADMIN_ROLES.includes(role))) {
+  if (!canEnterAdminConsole({ hasSession: Boolean(session), roles: session.user.roles })) {
     return (
       <StateCard
         title="无访问权限"

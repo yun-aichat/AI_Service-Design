@@ -14,6 +14,8 @@ import { AuthProvider, useAuth } from "../account";
 import { getCloudBaseAuthPort } from "../../infrastructure/cloudbase/auth/cloudbase-auth-port";
 import {
   BillingConfigRequestError,
+  debugAuthProfile,
+  type BillingAuthProfile,
   listAiUsageEvents,
   listCreditLedger,
   type AiUsageEventRecord,
@@ -69,10 +71,14 @@ function AdminBillingConsole() {
   const [usagePage, setUsagePage] = useState<BillingPage<AiUsageEventRecord> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [serverAuthProfile, setServerAuthProfile] = useState<BillingAuthProfile["user"] | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setAccessDenied(false);
+    setServerAuthProfile(null);
     try {
       const [ledger, usage] = await Promise.all([
         listCreditLedger({ limit: 100, sortBy: "createdAt", sortDirection: "desc" }),
@@ -81,6 +87,15 @@ function AdminBillingConsole() {
       setLedgerPage(ledger);
       setUsagePage(usage);
     } catch (reason) {
+      if (reason instanceof BillingConfigRequestError && reason.code === "FORBIDDEN") {
+        setAccessDenied(true);
+        try {
+          const debugProfile = await debugAuthProfile();
+          setServerAuthProfile(debugProfile.user);
+        } catch {
+          setServerAuthProfile(null);
+        }
+      }
       setError(getErrorMessage(reason, "加载 billing 管理数据失败。"));
     } finally {
       setLoading(false);
@@ -110,6 +125,23 @@ function AdminBillingConsole() {
       chargedCredits: usageItems.reduce((sum, item) => sum + item.chargedCredits, 0),
     };
   }, [ledgerPage, usagePage]);
+
+  if (accessDenied) {
+    return (
+      <PageShell>
+        <StateBlock
+          title="无访问权限"
+          message={error || "当前账号已登录，但 CloudBase 后端未授予 billing admin 权限。"}
+          details={[
+            `前端会话: id=${session?.user.id || "-"}, phone=${session?.user.phone || "-"}, roles=${formatRoles(session?.user.roles)}`,
+            serverAuthProfile
+              ? `服务端识别: id=${serverAuthProfile.id}, phone=${serverAuthProfile.phone || "-"}, roles=${formatRoles(serverAuthProfile.roles)}`
+              : "服务端识别: 暂未获取到调试资料",
+          ]}
+        />
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>
@@ -292,7 +324,15 @@ function DataTable({
   );
 }
 
-function StateBlock({ title, message }: { title: string; message: string }) {
+function StateBlock({
+  title,
+  message,
+  details,
+}: {
+  title: string;
+  message: string;
+  details?: string[];
+}) {
   return (
     <Stack
       bg="bg.surface"
@@ -304,6 +344,11 @@ function StateBlock({ title, message }: { title: string; message: string }) {
     >
       <Heading fontSize="lg">{title}</Heading>
       <Text color="status.errorFg" fontSize="sm">{message}</Text>
+      {details?.map((detail) => (
+        <Text color="fg.muted" fontFamily="mono" fontSize="xs" key={detail}>
+          {detail}
+        </Text>
+      ))}
     </Stack>
   );
 }
@@ -322,6 +367,10 @@ function formatDate(value: string) {
 
 function withSign(value: number) {
   return `${value > 0 ? "+" : ""}${value}`;
+}
+
+function formatRoles(roles: string[] | null | undefined) {
+  return Array.isArray(roles) && roles.length > 0 ? roles.join(",") : "(empty)";
 }
 
 function getErrorMessage(reason: unknown, fallback: string) {

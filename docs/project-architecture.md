@@ -1,10 +1,10 @@
 # 服务设计工具箱：现状与总体架构
 
-更新日期：2026-06-13
+更新日期：2026-06-18
 
 ## 1. 当前项目情况
 
-当前仓库已经不再是“单个 Journey DEMO”，而是进入了第一阶段模块化形态。Journey Map 仍然是唯一正式工具，但应用壳、AI 面板、认证、文档持久化和账本契约都已经有独立目录。
+当前仓库已经不再是“单个 Journey DEMO”，而是进入了第一阶段模块化形态。Journey Map 仍然是唯一正式工具，但应用壳、AI 面板、认证、正式持久化、Billing 页面和账本契约都已经有独立目录。
 
 ### 已完成的主线
 
@@ -13,14 +13,17 @@
 - 工具注册表已启用，当前注册 `journey-map`。
 - AI 对话区已拆到 `src/features/assistant/*`，保持 `clarify -> proposal -> confirm` 语义。
 - 账号页与 CloudBase Web 认证接线已进入 `src/features/account/*` 与 `src/infrastructure/cloudbase/auth/*`。
-- 文档持久化已进入 `server/application/tool-documents.cjs`、`server/infrastructure/cloudbase/tool-documents/*` 和 `api/tool-documents.js`。
+- 文档持久化已进入 `server/application/tool-documents.cjs`、`server/infrastructure/cloudbase/tool-documents/*` 和 `api/tool-documents.js`，正式宿主已切到 CloudBase repository。
 - Journey 已从 DEMO 常量上下文切换到正式的 `projectId / documentId / revision` 运行方式。
 - `tool_documents`、`tool_document_revisions`、`tool_usage_events` 设计与第一批实现已经存在。
 - `billing-entitlements` 契约与 `payment-integration` 第一版实现已经进入 `server/application/billing/*`。
+- 用户侧 Billing 页面与后台读链路已接上正式 API。
+- Journey assistant 已接入正式 AI 积分预占、提交与释放。
+- `/roundtable` 已提供 Roundtable Lite 状态可视化入口。
 
 ### 当前仍在进行中的主线
 
-- 真正与产品操作挂钩的积分扣减
+- token 成本与毛利快照
 - 第二个工具的接入
 - 全局服务设计助手与多工具推荐
 - 前端设计 DEMO 的独立探索与后续回接
@@ -28,8 +31,8 @@
 ### 当前主要风险
 
 - `src/styles.css` 仍然偏大，样式边界还没有完全收进 design-system。
-- Billing 集成虽然已完成第一轮绑定加固，但离真实微信/支付宝接入仍有距离。
-- CloudBase 认证、文档、AI、支付四条链路都已成形，但还没有统一的端到端产品闭环。
+- Billing 集成虽然已完成第一轮绑定加固和 Journey assistant 积分结算，但离真实微信/支付宝接入仍有距离。
+- CloudBase 认证、文档、AI、Billing 主链路已经接通，但成本统计、多工具和全局助手还没有进入统一产品闭环。
 
 ## 2. 架构原则
 
@@ -55,7 +58,8 @@ src/
     account/            # 账号页与用户态认证边界
     admin/              # 轻量后台页与内部配置管理
     assistant/          # Journey Assistant 面板与协议
-    billing/            # 前端计费展示预留
+    billing/            # 前端 Billing 页面
+    roundtable-lite/    # Roundtable Lite 项目看板
   infrastructure/
     cloudbase/
       auth/             # CloudBase Web auth 适配器
@@ -258,7 +262,7 @@ interface PaymentProvider {
 - 支付密钥、模型密钥和 Admin 能力只存在服务端。
 - 业务代码依赖自有 `AuthPort`、`DocumentRepository`、`LedgerRepository` 等端口，不在领域和 UI 中散布 CloudBase SDK 调用。
 - 工具内容作为正式业务数据进入文档与 revision 集合；行为埋点单独进入 usage event 集合，不复制完整内容到 event。
-- 具体能力盘点与已验证事实见 [cloudbase-capabilities.md](D:\knowledge\codex\design\docs\cloudbase-capabilities.md)。
+- 具体能力盘点与已验证事实见 [cloudbase-capabilities.md](cloudbase-capabilities.md)。
 
 ## 6. 模块边界
 
@@ -302,7 +306,7 @@ interface PaymentProvider {
 - 增加工具内容快照 `tool_document_revisions` 和基础使用事件 `tool_usage_events`。
 - 上传截图改为对象存储引用，避免长期保存 base64。
 
-- 状态：大部分已完成，仍缺完整端到端产品闭环与附件存储正式接线
+- 状态：已完成当前阶段主链路，仍缺附件存储与更完整产品化收口
 
 ### Phase 3：积分与支付
 
@@ -310,7 +314,7 @@ interface PaymentProvider {
 - 再接微信支付与支付宝，完成回调验签、幂等入账、查单和退款。
 - 建立用户可见的订单与用量明细。
 
-- 状态：进行中。积分领域契约、payment integration 与第一轮绑定加固已落地，真实支付接入、正式持久化仓储与 AI 积分联动未完成。
+- 状态：进行中。积分领域契约、payment integration、用户侧 Billing、后台读链路、Journey assistant AI 积分联动都已落地；真实支付接入、成本统计和更完整后台管理未完成。
 
 ### Phase 4：全局助手与第二个工具
 

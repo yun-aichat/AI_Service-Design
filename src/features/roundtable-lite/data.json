@@ -1,16 +1,16 @@
 {
-  "generated_at": "2026-06-18T14:41:42.335Z",
+  "generated_at": "2026-06-23T13:57:48.700Z",
   "summary": {
-    "total_tasks": 44,
-    "completed": 21,
+    "total_tasks": 51,
+    "completed": 23,
     "cancelled": 22,
     "in_review": 0,
     "in_progress": 1,
-    "queued": 0,
-    "total_reviews": 24,
-    "approved_reviews": 17,
+    "queued": 5,
+    "total_reviews": 25,
+    "approved_reviews": 18,
     "changes_requested": 7,
-    "approval_rate": 71
+    "approval_rate": 72
   },
   "migration": {
     "migrated_at": "2026-06-07T04:35:49.143Z",
@@ -29,12 +29,12 @@
       "boundary": "src/app, src/design-system",
       "dependencies": [],
       "display_name": "平台壳与设计系统",
-      "description": "负责基于 Chakra UI v3 的主题、Recipe、应用壳、路由与产品专用组件；不持有业务规则。",
-      "task": "先完成 Chakra-first 设计基础、品牌主题、组件契约与 /components 验收，再进入业务 UI 重构。",
+      "description": "负责主题、应用壳、基础页面路由与通用展示组件，不持有业务规则。",
+      "task": "保持页面装配、导航、壳层和通用组件稳定。",
       "output_path": "src/app, src/design-system",
       "total": 16,
-      "completed": 8,
-      "in_progress": 1,
+      "completed": 9,
+      "in_progress": 0,
       "review": 0,
       "queued": 0,
       "cancelled": 7,
@@ -45,11 +45,11 @@
       "boundary": "src/domain, src/application, src/tools",
       "dependencies": [],
       "display_name": "工具运行时与领域",
-      "description": "负责纯 TypeScript 领域模型、工具注册、文档命令、Schema 迁移和导出协议。",
-      "task": "定义 ToolDefinition/ToolDocument 契约，并把 Journey Map 变成第一个正式工具。",
+      "description": "负责领域契约、工具注册、文档协议、导出与纯 TypeScript 对象模型。",
+      "task": "承接 Persona/Journey 领域协议与文档映射，不负责模型编排。",
       "output_path": "src/domain, src/application, src/tools",
-      "total": 8,
-      "completed": 5,
+      "total": 9,
+      "completed": 6,
       "in_progress": 0,
       "review": 0,
       "queued": 0,
@@ -63,14 +63,14 @@
         "tool-runtime"
       ],
       "display_name": "AI 编排与 Skills",
-      "description": "负责全局/工具 Skill、上下文构建、模型适配、结构化提案校验和 AI 运行记录。",
-      "task": "将 Journey Chat 泛化为统一 Assistant 协议，并设计全局与工具级记忆。",
+      "description": "负责聊天澄清、模型调用协议、上下文构建与 Assistant 交互边界。",
+      "task": "继续承接澄清与确认前交互，不直接吞掉正式 Journey generation 服务。",
       "output_path": "src/features/assistant, server/application/assistant, skills",
-      "total": 5,
+      "total": 6,
       "completed": 1,
       "in_progress": 0,
       "review": 0,
-      "queued": 0,
+      "queued": 1,
       "cancelled": 4,
       "high_risk": 4
     },
@@ -79,8 +79,8 @@
       "boundary": "src/features/account, src/infrastructure/cloudbase/auth, server/infrastructure/cloudbase/auth",
       "dependencies": [],
       "display_name": "账号与 CloudBase 身份",
-      "description": "负责邮箱登录、会话、用户资料、授权端口及 CloudBase 身份适配。",
-      "task": "确认 CloudBase 可用能力并实现 AuthPort 与邮箱登录闭环。",
+      "description": "负责登录、会话与服务端鉴权。",
+      "task": "保持正式访问控制边界稳定。",
       "output_path": "src/features/account, src/infrastructure/cloudbase/auth, server/infrastructure/cloudbase/auth",
       "total": 3,
       "completed": 2,
@@ -92,21 +92,21 @@
     },
     {
       "name": "billing-entitlements",
-      "boundary": "src/features/billing, server/application/billing, server/infrastructure/payments",
+      "boundary": "src/features/billing, server/application/billing, server/infrastructure/payments, server/application/billing-config.cjs, server/infrastructure/cloudbase/billing-config",
       "dependencies": [
         "identity-cloudbase"
       ],
-      "display_name": "支付、订单与次数权益",
-      "description": "负责商品、订单、微信/支付宝适配、额度账本以及预占/提交/释放。",
-      "task": "定义订单状态机和不可变次数账本，随后接入微信与支付宝。",
-      "output_path": "src/features/billing, server/application/billing, server/infrastructure/payments",
-      "total": 8,
+      "display_name": "支付、积分与后台配置",
+      "description": "负责积分账本、动作定价、模型策略、后台配置读取与写入边界。",
+      "task": "承接动作层积分配置、模型策略配置与 usage/audit 查询。",
+      "output_path": "src/features/billing, server/application/billing, server/infrastructure/payments, server/application/billing-config.cjs, server/infrastructure/cloudbase/billing-config",
+      "total": 9,
       "completed": 4,
       "in_progress": 0,
       "review": 0,
-      "queued": 0,
+      "queued": 1,
       "cancelled": 4,
-      "high_risk": 5
+      "high_risk": 6
     },
     {
       "name": "persistence-backend",
@@ -116,19 +116,226 @@
         "identity-cloudbase"
       ],
       "display_name": "持久化与后端平台",
-      "description": "负责项目/工具文档仓储、BFF/API、对象存储、审计、错误约定和可观测性。",
-      "task": "建立 CloudBase 仓储适配器、服务端鉴权边界和文档 revision 乐观锁。",
+      "description": "负责文档仓储、BFF/API、revision、usage event 和后端平台能力。",
+      "task": "承接正式文档与审计事件落库，不吞并领域规则。",
       "output_path": "server, src/infrastructure/cloudbase",
-      "total": 4,
+      "total": 5,
       "completed": 1,
-      "in_progress": 0,
+      "in_progress": 1,
       "review": 0,
       "queued": 0,
       "cancelled": 3,
       "high_risk": 3
+    },
+    {
+      "name": "journey-generation",
+      "boundary": "server/application/journey-generation, api/journey-generate.js, server/journey-generate.cjs",
+      "dependencies": [
+        "tool-runtime",
+        "billing-entitlements",
+        "persistence-backend",
+        "identity-cloudbase"
+      ],
+      "display_name": "Journey 正式生成",
+      "description": "负责正式 Journey 生成请求、骨架生成、单 Persona 推演、汇总与落库。",
+      "task": "按三段式编排实现正式 Journey generation，不与 Assistant 澄清链路混写。",
+      "output_path": "server/application/journey-generation, api/journey-generate.js, server/journey-generate.cjs",
+      "total": 1,
+      "completed": 0,
+      "in_progress": 0,
+      "review": 0,
+      "queued": 1,
+      "cancelled": 0,
+      "high_risk": 1
+    },
+    {
+      "name": "admin-console",
+      "boundary": "src/features/admin",
+      "dependencies": [
+        "billing-entitlements",
+        "journey-generation"
+      ],
+      "display_name": "管理后台",
+      "description": "负责内部管理页展示与配置操作，不持有后端业务规则。",
+      "task": "承接动作积分、模型策略、Journey run 审计页面。",
+      "output_path": "src/features/admin",
+      "total": 1,
+      "completed": 0,
+      "in_progress": 0,
+      "review": 0,
+      "queued": 1,
+      "cancelled": 0,
+      "high_risk": 0
+    },
+    {
+      "name": "persona-assets",
+      "boundary": "docs/persona-*, src/tools/persona, server/application/persona",
+      "dependencies": [
+        "tool-runtime",
+        "persistence-backend"
+      ],
+      "display_name": "Persona 资产系统",
+      "description": "负责 Persona 正式对象协议、资产读取与后续 Persona 工具实现边界。",
+      "task": "先承接 Persona 正式文档协议与资产读取边界，再进入 UI 实现。",
+      "output_path": "docs/persona-*, src/tools/persona, server/application/persona",
+      "total": 1,
+      "completed": 0,
+      "in_progress": 0,
+      "review": 0,
+      "queued": 1,
+      "cancelled": 0,
+      "high_risk": 0
     }
   ],
   "tasks": [
+    {
+      "task_id": "task_mqqpl1lz_f1b983cf",
+      "title": "统一提交剩余 bugfix 与配套文档改动",
+      "module": "persistence-backend",
+      "risk": "normal",
+      "task_type": "docs",
+      "review_required": false,
+      "description": "将当前工作区中剩余的 bugfix、验收支持脚本、管理后台与 Journey 页面相关改动统一纳入一次提交并推送到 origin/main。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-23T13:57:23.687Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-23T13:57:35.558Z",
+          "note": ""
+        }
+      ],
+      "status": "in_progress",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqqpaeys_a0fe42de",
+      "title": "收口 Persona/Journey 方案并拆分独立开发任务",
+      "module": "tool-runtime",
+      "risk": "low",
+      "task_type": "docs",
+      "review_required": false,
+      "description": "核验 Persona/Journey/Billing/Admin 的整体方案闭环，补齐正式技术设计与任务拆分文档，给出后续独立开发阶段和验收清单，并只提交本轮确认的文档变更。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-23T13:49:07.780Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-23T13:49:51.650Z",
+          "note": ""
+        },
+        {
+          "action": "complete",
+          "at": "2026-06-23T13:50:16.944Z",
+          "note": "本轮只提交文档真源与拆分方案；工作区内其他代码改动和未跟踪文件未纳入本次 commit。"
+        }
+      ],
+      "status": "completed",
+      "commit": "5f28605",
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqqp0tj9_069ae626",
+      "title": "E 阶段：接通前端正式生成入口与模型展示",
+      "module": "ai-orchestration",
+      "risk": "normal",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "把现有 assistant / Journey 页面接到正式 journey-generate API，并在用户界面展示当前结果使用的 provider / model。范围限定在 assistant 与 Journey 页面，不进入后端计费和 admin 页面。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-23T13:41:40.101Z",
+          "note": ""
+        }
+      ],
+      "status": "queued",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqqp0ozo_031a7b90",
+      "title": "D 阶段：落地管理后台动作配置与 run 审计页面",
+      "module": "admin-console",
+      "risk": "normal",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "实现 admin-console 中的动作积分配置页、模型策略页和 Journey run audit 表格页。范围限定在 src/features/admin，不反向修改后端领域规则。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-23T13:41:34.212Z",
+          "note": ""
+        }
+      ],
+      "status": "queued",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqqp0lla_12fcb608",
+      "title": "C 阶段：实现 Journey generation 正式后端",
+      "module": "journey-generation",
+      "risk": "high",
+      "task_type": "cross_module",
+      "review_required": true,
+      "description": "按三段式编排实现 JourneyGenerationRequest、JourneySkeleton、PersonaRunResult、JourneySynthesisResult 对应的正式生成后端和 API。范围限定在 journey-generation 模块，不改 admin 页面和 billing 配置页面。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-23T13:41:29.806Z",
+          "note": ""
+        }
+      ],
+      "status": "queued",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqqp0gnh_9e85a7d8",
+      "title": "B 阶段：实现动作积分配置与 Journey run 审计后端",
+      "module": "billing-entitlements",
+      "risk": "high",
+      "task_type": "payment",
+      "review_required": true,
+      "description": "实现后台动作积分配置、模型策略配置以及 Journey run audit 查询后端接口。范围限定在 billing-entitlements 和其 CloudBase 配置仓储，不进入 admin 页面和 Journey generation 编排。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-23T13:41:23.405Z",
+          "note": ""
+        }
+      ],
+      "status": "queued",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqqp0c9y_90eba6c7",
+      "title": "A 阶段：补齐 Persona 资产读取闭环",
+      "module": "persona-assets",
+      "risk": "normal",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "实现正式 Persona 资产读取路径，保证 Journey generation 可以通过 personaIds 读取稳定 Persona 输入层。范围限定在 server/application/persona、src/tools/persona 及 Persona 协议真源文档，不进入 Journey generation 编排或 admin 页面。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-23T13:41:17.734Z",
+          "note": ""
+        }
+      ],
+      "status": "queued",
+      "commit": null,
+      "verdict": null
+    },
     {
       "task_id": "task_mqjly79c_35e90b24",
       "title": "Add Roundtable Lite dashboard route and generated project snapshot",
@@ -147,11 +354,21 @@
           "action": "start",
           "at": "2026-06-18T14:41:30.701Z",
           "note": "补录当前 feat/roundtable-lite-viz 本地实现到正式 Lite 流程：先核查 /roundtable 页面、数据生成脚本与 Vite watch 接线，再完成最小验证与审查提交。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-18T14:43:47.043Z",
+          "note": "Scope kept to platform shell and build tooling; no domain, billing, auth, or persistence business logic changed."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-18T14:44:23.382Z",
+          "note": ""
         }
       ],
-      "status": "in_progress",
-      "commit": null,
-      "verdict": null
+      "status": "completed",
+      "commit": "ca33366b0026540433696464ea10c6da58661c78",
+      "verdict": "approved"
     },
     {
       "task_id": "task_mqi7yyzt_bd4137f7",
@@ -1472,6 +1689,14 @@
     }
   ],
   "reviews": [
+    {
+      "review_id": "review_mqjm27ys_ba47d4e2",
+      "at": "2026-06-18T14:44:23.380Z",
+      "task_id": "task_mqjly79c_35e90b24",
+      "verdict": "approved",
+      "comments": "批准。提交 ca33366 把 Roundtable Lite 可视化限定在平台壳与构建工具边界内：新增 /roundtable 路由与页面组件，构建前生成 .roundtable-lite 的 JSON 快照，Vite dev 模式下通过 watch 自动再生数据，并补齐 dist/roundtable 静态入口。验证链路完整：node scripts/generate-roundtable-viz-data.cjs、node --check scripts/roundtable-viz-plugin.cjs、npm run build 均通过。未触及 billing、auth、persistence 或领域规则，只引入一个已生成数据驱动的项目仪表盘。已知细节是 data.json 为生成产物，提交时快照与后续任务状态可能存在短暂偏差，但 dev/build 都会自动再生，属于可接受的展示层时效性，不构成本轮阻断。",
+      "reviewer": "codex"
+    },
     {
       "review_id": "review_mqi82ooa_1ed77c48",
       "at": "2026-06-17T15:25:04.234Z",

@@ -1,4 +1,4 @@
-import { Button, Heading, Input, Splitter, Textarea } from "@chakra-ui/react";
+import { Button, Heading, Input, Splitter, Text, Textarea } from "@chakra-ui/react";
 import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, CSSProperties, ReactNode } from "react";
@@ -15,6 +15,7 @@ import {
   ToolDocumentsRequestError,
 } from "../../infrastructure/cloudbase/tool-documents/api";
 import { MatrixScrollbars } from "./MatrixScrollbars";
+import { resolveJourneySidebarState } from "./sidebar-layout";
 import { SplitterRow } from "./SplitterRow";
 import {
   applyJourneyMapCommand,
@@ -149,6 +150,10 @@ export function JourneyMapPage({
         "--matrix-scroll-left": `${matrixScrollLeft}px`,
       }) as CSSProperties,
     [matrixScrollLeft],
+  );
+  const sidebarState = useMemo(
+    () => resolveJourneySidebarState({ hasDocumentContext: Boolean(documentId && projectId) }),
+    [documentId, projectId],
   );
 
   const runCommand = (command: Pick<JourneyMapCommand, "type" | "payload">) => {
@@ -558,82 +563,26 @@ export function JourneyMapPage({
         </section>
 
         <aside className="input-panel chat-panel" aria-label="输入信息与 AI 对话">
-          <section>
-            <Heading as="h2" className="panel-heading">
-              场景输入
-            </Heading>
-            <FieldLabel label="服务/产品名称">
-              <Input
-                value={serviceName}
-                onChange={(event) => syncTitle(event.target.value)}
-              />
-            </FieldLabel>
-            <FieldLabel label="当前项目">
-              <select
-                value={projectId || ""}
-                onChange={(event) => {
-                  const nextProjectId = event.target.value || null;
-                  setProjectId(nextProjectId);
-                  setDocumentId(null);
-                  setDocumentRevision(null);
-                  setSaveStatus("正在切换项目...");
-                  void loadJourneyContext(nextProjectId).catch((error) => {
-                    setSaveStatus(error instanceof Error ? error.message : "项目切换失败");
-                  });
-                }}
-              >
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </FieldLabel>
-            <FieldLabel label="目标用户">
-              <Input
-                value={journey.persona}
-                onChange={(event) => updateJourneyMeta({ persona: event.target.value })}
-              />
-            </FieldLabel>
-            <FieldLabel label="用户目标">
-              <Input
-                value={journey.goal}
-                onChange={(event) => updateJourneyMeta({ goal: event.target.value })}
-              />
-            </FieldLabel>
-            <FieldLabel label="场景描述">
-              <Textarea
-                rows={7}
-                value={journey.scenario}
-                onChange={(event) => updateJourneyMeta({ scenario: event.target.value })}
-              />
-            </FieldLabel>
-            <FieldLabel label="阶段数量">
-              <Input
-                type="number"
-                min={3}
-                max={8}
-                value={stageCount}
-                onChange={(event) => {
-                  const value = Number(event.target.value);
-                  setStageCount(Number.isFinite(value) ? value : 3);
-                }}
-              />
-            </FieldLabel>
-            <Button className="primary-action" onClick={generateDraft}>
-              生成初稿
-            </Button>
-          </section>
-          {documentId && projectId ? (
+          {sidebarState.showAssistantPanel && sidebarState.assistantStatus === "ready" ? (
             <JourneyAssistantPanel
-              documentId={documentId}
+              documentId={documentId!}
               journey={journey}
               onApplyProposal={applyJourneyProposal}
-              projectId={projectId}
+              projectId={projectId!}
               revision={documentRevision}
               serviceName={serviceName}
             />
-          ) : null}
+          ) : (
+            <section className="chat-service" aria-label="AI 对话准备状态">
+              <Text className="eyebrow">AI Assistant</Text>
+              <Heading as="h2" className="panel-heading">
+                AI 对话
+              </Heading>
+              <Text color="fg.muted" fontSize="sm" mt="2">
+                {saveStatus || "AI 对话准备中..."}
+              </Text>
+            </section>
+          )}
         </aside>
       </main>
     </>

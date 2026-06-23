@@ -10,6 +10,9 @@ import {
 type CloudBaseUser = {
   id?: unknown;
   sub?: unknown;
+  role?: unknown;
+  roles?: unknown;
+  internal_user_type?: unknown;
   email?: unknown;
   phone?: unknown;
   phone_number?: unknown;
@@ -37,6 +40,9 @@ type CloudBaseResult<T> = Promise<{ data: T; error?: unknown }>;
 
 export type CloudBaseAuthClient = {
   getSession(): CloudBaseResult<{ session?: unknown }>;
+  signUp?(input: Record<string, unknown>): CloudBaseResult<{
+    verifyOtp?: (input: Record<string, unknown>) => CloudBaseResult<{ session?: unknown }>;
+  }>;
   signInWithOtp(input: Record<string, unknown>): CloudBaseResult<{
     verifyOtp?: (input: Record<string, unknown>) => CloudBaseResult<{ session?: unknown }>;
   }>;
@@ -74,29 +80,65 @@ function optionalString(value: unknown) {
   return typeof value === "string" && value ? value : null;
 }
 
-function normalizeRoles(groups: unknown, appMetadataRoles: unknown): string[] {
+function readRoleName(value: unknown) {
+  if (typeof value === "string" && value) return value;
+  if (!value || typeof value !== "object") return null;
+
+  const candidate = value as {
+    id?: unknown;
+    roleIdentity?: unknown;
+    RoleIdentity?: unknown;
+    name?: unknown;
+  };
+  if (typeof candidate.id === "string" && candidate.id) return candidate.id;
+  if (typeof candidate.roleIdentity === "string" && candidate.roleIdentity) {
+    return candidate.roleIdentity;
+  }
+  if (typeof candidate.RoleIdentity === "string" && candidate.RoleIdentity) {
+    return candidate.RoleIdentity;
+  }
+  if (typeof candidate.name === "string" && candidate.name) return candidate.name;
+  return null;
+}
+
+function appendRoles(target: Set<string>, values: unknown) {
+  const singleRole = readRoleName(values);
+  if (singleRole) {
+    target.add(singleRole);
+    return;
+  }
+  if (!Array.isArray(values)) return;
+  for (const value of values) {
+    const role = readRoleName(value);
+    if (role) {
+      target.add(role);
+    }
+  }
+}
+
+function appendInternalRoles(target: Set<string>, internalUserType: unknown) {
+  if (internalUserType === "administrator") {
+    target.add("admin");
+  }
+}
+
+function normalizeRoles(
+  groups: unknown,
+  appMetadataRoles: unknown,
+  directRoles?: unknown,
+  alternateRoles?: unknown,
+  internalUserType?: unknown,
+): string[] {
   const roles = new Set<string>();
 
   if (Array.isArray(groups)) {
-    for (const group of groups) {
-      if (typeof group === "string" && group) {
-        roles.add(group);
-      } else if (
-        group &&
-        typeof group === "object" &&
-        typeof group.id === "string" &&
-        group.id
-      ) {
-        roles.add(group.id);
-      }
-    }
+    appendRoles(roles, groups);
   }
 
-  if (Array.isArray(appMetadataRoles)) {
-    for (const role of appMetadataRoles) {
-      if (typeof role === "string" && role) roles.add(role);
-    }
-  }
+  appendRoles(roles, appMetadataRoles);
+  appendRoles(roles, directRoles);
+  appendRoles(roles, alternateRoles);
+  appendInternalRoles(roles, internalUserType);
 
   return [...roles];
 }
@@ -104,7 +146,13 @@ function normalizeRoles(groups: unknown, appMetadataRoles: unknown): string[] {
 function toAuthUser(input: unknown): AuthUser {
   const user = (input && typeof input === "object" ? input : {}) as CloudBaseUser;
   const metadata = user.user_metadata || {};
-  const roles = normalizeRoles(user.groups, user.app_metadata?.roles);
+  const roles = normalizeRoles(
+    user.groups,
+    user.app_metadata?.roles,
+    user.role,
+    user.roles,
+    user.internal_user_type,
+  );
   return {
     id: String(user.id || user.sub || ""),
     email: optionalString(user.email),
@@ -186,11 +234,17 @@ export class CloudBaseAuthAdapter implements AuthPort {
   }): Promise<OtpChallenge> {
     const destination = normalizeDestination(input.channel, input.destination);
     return withAuthError(async () => {
-      const params =
-        input.channel === "email"
-          ? { email: destination, options: { shouldCreateUser: input.createUser ?? true } }
-          : { phone: destination, options: { shouldCreateUser: input.createUser ?? true } };
-      const { data, error } = await this.auth.signInWithOtp(params);
+      const shouldCreateUser = input.createUser ?? true;
+      const usePhoneSignUp =
+        input.channel === "phone" && shouldCreateUser && typeof this.auth.signUp === "function";
+      const params = usePhoneSignUp
+        ? { phone: destination }
+        : input.channel === "email"
+          ? { email: destination, options: { shouldCreateUser } }
+          : { phone: destination, options: { shouldCreateUser } };
+      const { data, error } = usePhoneSignUp
+        ? await this.auth.signUp!(params)
+        : await this.auth.signInWithOtp(params);
       if (error) throw error;
       if (!data.verifyOtp) {
         throw new AuthPortError(
