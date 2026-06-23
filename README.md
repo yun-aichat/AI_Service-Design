@@ -10,23 +10,26 @@
 
 ## 当前状态
 
-截至 `2026-06-14`，仓库里已经存在这些能力：
+截至 `2026-06-18`，当前 `main` 分支已经具备这些能力：
 
 - `journey-map` 已作为正式工具注册到 `src/tools/registry.ts`
 - Journey 页面已经拆出 `src/tools/journey-map/*`
 - AI 对话区已经拆出 `src/features/assistant/*`
 - CloudBase 账号页已经落到 `/account`
-- Journey 文档已经使用 `projectId / documentId / revision` 服务契约
+- 用户侧 Billing 页面已经落到 `/billing`
+- Roundtable Lite 可视化页已经落到 `/roundtable`
+- Journey 文档已经走正式 `projectId / documentId / revision` 服务契约
+- Journey 的项目、文档、revision、usage event 已切到正式 CloudBase 持久化链路
 - 已落地 `tool_documents`、`tool_document_revisions`、`tool_usage_events`
 - 已有积分账本、预占、订单与 payment integration 第一版实现
-- 已有积分商品、动作定价、模型策略与成本事件的配置服务
+- Journey assistant 已接入正式 AI 积分预占、提交和释放
+- AI usage event 已补齐 `status / billingStatus / chargedCredits` 记录语义
+- 已有积分商品、动作定价、模型策略、账本查询与后台读链路配置服务
 
 当前仍在进行中的事项：
 
-- 把文档正式 API 宿主切换到 CloudBase repository
-- AI 请求接入积分预占、提交和释放
 - token 成本与毛利记录
-- 轻量计费后台
+- 更完整的轻量计费后台管理能力
 - 真实微信/支付宝 provider
 - 第二个工具接入
 - 全局服务设计助手
@@ -65,39 +68,55 @@ npm run build
 - `/`：Journey Map 工具工作台
 - `/components`：设计系统与组件验收页
 - `/account`：CloudBase 账号认证页
+- `/billing`：用户侧 Billing 页面
+- `/admin`：轻量后台入口
+- `/roundtable`：Roundtable Lite 项目看板
 
 ## 当前能力
 
 - 编辑 Journey 阶段、文字行、图片行、情绪行与单元格
 - 保存与恢复 Journey 文档
 - 基于 AI 的 `clarify -> proposal -> confirm` 修改流程
+- Journey assistant 的 AI 积分预占、提交与释放
 - Markdown、JSON、CSV、SVG、打印/PDF 导出
 - CloudBase 邮箱/手机号认证接线
-- 工具文档版本快照与基础使用事件服务契约
+- 工具文档版本快照与基础使用事件服务
 - 积分账户、账本、预占与支付编排
+- 用户侧 Billing 余额、套餐与账本分页读取
+- 管理侧 usage / cost / ledger 正式读取
+- Roundtable Lite 状态可视化看板
 
-注意：当前正式 API 宿主仍有两处部署接线缺口：
+注意：当前主线已不再存在以下旧结论：
 
-- `tool-documents` 仍使用进程内 repository，尚未切换到 CloudBase
-- `billing-config` 已有 CloudBase repository，但部署入口尚未初始化服务端数据库客户端
+- `tool-documents` 已经切到正式 CloudBase 宿主
+- Journey assistant 已经接上 AI 积分结算主链
+
+当前仍然缺少的主要产品闭环是：
+
+- token 成本、估算毛利与更完整结算统计
+- 真实微信/支付宝支付适配器
+- 第二个工具与全局助手
+- 更完整的管理后台写入与配置管理能力
 
 ## 核心文档
 
-- [docs/project-architecture.md](D:\knowledge\codex\design\docs\project-architecture.md)：当前架构、阶段进度与模块边界
-- [docs/product-plan.md](D:\knowledge\codex\design\docs\product-plan.md)：产品路线与工具优先级
-- [docs/design-system.md](D:\knowledge\codex\design\docs\design-system.md)：设计系统规范
-- [docs/journey-map-tool.md](D:\knowledge\codex\design\docs\journey-map-tool.md)：Journey Map 工具规格
-- [docs/tool-runtime-contracts.md](D:\knowledge\codex\design\docs\tool-runtime-contracts.md)：工具运行时契约
-- [docs/cloudbase-capabilities.md](D:\knowledge\codex\design\docs\cloudbase-capabilities.md)：CloudBase 能力与接入边界
-- [docs/analytics-design.md](D:\knowledge\codex\design\docs\analytics-design.md)：内容与使用数据方案
-- [docs/billing-design.md](D:\knowledge\codex\design\docs\billing-design.md)：积分账本与支付编排设计
-- [docs/flexible-credit-billing.md](D:\knowledge\codex\design\docs\flexible-credit-billing.md)：灵活积分、模型与商品定价方案
-- [docs/progress-report-2026-06-14.md](D:\knowledge\codex\design\docs\progress-report-2026-06-14.md)：最新项目核验结果
-- [docs/git-recovery-2026-06-14.md](D:\knowledge\codex\design\docs\git-recovery-2026-06-14.md)：Git 恢复记录
+- [docs/project-architecture.md](docs/project-architecture.md)：当前架构、阶段进度与模块边界
+- [docs/product-plan.md](docs/product-plan.md)：产品路线与工具优先级
+- [docs/design-system.md](docs/design-system.md)：设计系统规范
+- [docs/journey-map-tool.md](docs/journey-map-tool.md)：Journey Map 工具规格
+- [docs/journey-orchestration-technical-design.md](docs/journey-orchestration-technical-design.md)：Journey 正式生成编排技术方案
+- [docs/tool-runtime-contracts.md](docs/tool-runtime-contracts.md)：工具运行时契约
+- [docs/cloudbase-capabilities.md](docs/cloudbase-capabilities.md)：CloudBase 能力与接入边界
+- [docs/analytics-design.md](docs/analytics-design.md)：内容与使用数据方案
+- [docs/billing-design.md](docs/billing-design.md)：积分账本与支付编排设计
+- [docs/flexible-credit-billing.md](docs/flexible-credit-billing.md)：灵活积分、模型与商品定价方案
+- [docs/progress-report-2026-06-18.md](docs/progress-report-2026-06-18.md)：当前最新项目核验结果
+- [docs/stage-acceptance-checklist.md](docs/stage-acceptance-checklist.md)：本阶段收尾验收清单
+- [docs/git-recovery-2026-06-14.md](docs/git-recovery-2026-06-14.md)：Git 恢复记录
 
 ## 协作约定
 
 - 完成模块任务后，先本地验证，再提交本地 Git
 - 新任务开始前先创建独立分支，避免多个模块把提交混在一起
 - 一次性提示词、拆分计划和临时验收说明不再长期留在 `docs/`
-- 新增或调整可复用组件时，需要同步更新 `/components` 与 [docs/design-system.md](D:\knowledge\codex\design\docs\design-system.md)
+- 新增或调整可复用组件时，需要同步更新 `/components` 与 [docs/design-system.md](docs/design-system.md)
