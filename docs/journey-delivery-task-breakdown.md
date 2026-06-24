@@ -6,27 +6,33 @@
 
 当前方案已经把产品口径、Journey 工作流、计费动作层、后台 run 审计字段和技术编排主线基本收口。
 
-但从“可以开始稳定开发”的角度看，仍然缺 5 个关键闭环：
+在本轮补文档之后，这 5 个问题已经从“方案未闭环”进入“方案已闭环、实现未开始”状态。
 
-1. Persona 资产读取闭环还没落地
-- 已有 Persona 协议文档，但还没有正式的服务端读取路径
-- Journey generation 现在知道要吃 `personaIds`，但还没有明确从哪里读正式 Persona 资产
+总装配闭环文档位于：
 
-2. Journey generation 正式后端还没实现
-- 现在只有技术方案文档
-- `JourneyGenerationRequest / JourneySkeleton / PersonaRunResult / JourneySynthesisResult` 还没有变成真实代码协议与接口
+- `docs/journey-implementation-closure-spec.md`
 
-3. 后台计费配置和审计查询还没有正式接口闭环
-- 已经有动作积分配置、模型策略和 run audit 字段设计
-- 但还没有可稳定消费的后台读写 API
+当前剩余待做的，不再是继续讨论概念，而是把下面 5 个闭环按既定 contract 实现出来：
 
-4. 管理后台页面还没有按新 contract 收口
-- 当前已经有 admin 入口和部分 billing/config 读取链路
-- 但针对动作积分、模型策略、Journey run audit 表格还没有按本次方案固定下来
+1. Persona 资产读取闭环实现
+- 已有 Persona 协议文档与总装配读取 contract
+- 下一步是把正式服务端读取路径实现出来
 
-5. 前端正式生成入口还没有接 Journey generation 主链
-- 当前 assistant 还主要是澄清 / proposal 风格
-- 还没有把“确认并生成”正式接到新 Journey generation API
+2. Journey generation 正式后端实现
+- 已有对象协议、编排步骤、错误码和落库边界
+- 下一步是把 `JourneyGenerationRequest / JourneySkeleton / PersonaRunResult / JourneySynthesisResult` 对应服务与 API 落代码
+
+3. 后台计费配置和审计查询后端实现
+- 已有动作积分配置、模型策略和 run audit query contract
+- 下一步是把正式后台读写 API 落代码
+
+4. 管理后台页面实现
+- 已有页面结构、表格字段、筛选与错误态规则
+- 下一步是按 contract 接通 admin UI
+
+5. 前端正式生成入口实现
+- 已有确认卡片、调用时机、成功失败承接规则
+- 下一步是把“确认并生成”正式接到 Journey generation 主链
 
 ## 2. 拆分原则
 

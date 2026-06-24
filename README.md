@@ -105,6 +105,7 @@ npm run build
 - [docs/design-system.md](docs/design-system.md)：设计系统规范
 - [docs/journey-map-tool.md](docs/journey-map-tool.md)：Journey Map 工具规格
 - [docs/journey-orchestration-technical-design.md](docs/journey-orchestration-technical-design.md)：Journey 正式生成编排技术方案
+- [docs/journey-implementation-closure-spec.md](docs/journey-implementation-closure-spec.md)：Persona / Journey / Billing / Admin / Front-end 五个实施闭环总装配方案
 - [docs/tool-runtime-contracts.md](docs/tool-runtime-contracts.md)：工具运行时契约
 - [docs/cloudbase-capabilities.md](docs/cloudbase-capabilities.md)：CloudBase 能力与接入边界
 - [docs/analytics-design.md](docs/analytics-design.md)：内容与使用数据方案
