@@ -15,7 +15,7 @@ export function createToolDocument<TContent, TCommand extends ToolCommand>(
 ): ToolDocument<TContent> {
   assertToolDefinition(definition)
 
-  const initialContent = definition.createInitialDocument(input.initialValue)
+  const initialContent = definition.createInitialDocument(input.initialValue, input)
   const content = definition.validateDocument(initialContent)
   assertJsonSerializable(content)
 

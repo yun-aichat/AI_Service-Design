@@ -12,6 +12,7 @@
     "src/domain/tool-runtime.ts",
     "src/application/tool-runtime.ts",
     "src/tools/registry.ts",
-    "src/tools/journey-map/tool.ts"
+    "src/tools/journey-map/tool.ts",
+    "src/tools/persona/tool.ts"
   ]
 }

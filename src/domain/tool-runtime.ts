@@ -83,7 +83,10 @@ export type ToolDefinition<
 > = {
   metadata: ToolMetadata
   documentVersion: number
-  createInitialDocument(input: unknown): TContent
+  createInitialDocument(
+    input: unknown,
+    context: Readonly<CreateToolDocumentInput>,
+  ): TContent
   validateDocument(input: unknown): TContent
   applyCommand(document: Readonly<TContent>, command: TCommand): TContent
   migrations: readonly ToolMigration<TContent>[]

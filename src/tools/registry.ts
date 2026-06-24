@@ -5,6 +5,7 @@ import {
 } from "../domain/tool-runtime"
 import { assertToolDefinition } from "../application/tool-runtime"
 import { journeyMapToolDefinition } from "./journey-map/tool"
+import { personaToolDefinition } from "./persona/tool"
 
 export type ToolRegistry = {
   get(toolId: ToolId): AnyToolDefinition
@@ -56,4 +57,4 @@ export function defineToolRegistry(
 }
 
 // Tool modules are added here only after their domain model is migrated.
-export const toolRegistry = defineToolRegistry([journeyMapToolDefinition])
+export const toolRegistry = defineToolRegistry([journeyMapToolDefinition, personaToolDefinition])

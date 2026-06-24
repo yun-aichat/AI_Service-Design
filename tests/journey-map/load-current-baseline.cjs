@@ -20,7 +20,7 @@ const TSCONFIG_PATH = path.resolve(ROOT_PATH, "tsconfig.tool-runtime-tests.json"
 const TSC_BIN = require.resolve("typescript/bin/tsc")
 const COMPILED_MODULE_PATH = path.resolve(
   ROOT_PATH,
-  "tmp/tool-runtime-tests/tools/journey-map/index.js",
+  "tmp/tool-runtime-tests/tools/journey-map/tool.js",
 )
 const COMPILED_REGISTRY_PATH = path.resolve(
   ROOT_PATH,
