@@ -71,7 +71,11 @@ function compressResolvedPersonaInput(input, limit) {
     contextSummaries: [],
   };
 
-  if (estimateResolvedPersonaInputLength(base) >= limit) {
+  const baseLength = estimateResolvedPersonaInputLength(base);
+  if (baseLength > limit) {
+    throw createPersonaInputTooLargeError(input.personaId, baseLength);
+  }
+  if (baseLength === limit) {
     return base;
   }
 

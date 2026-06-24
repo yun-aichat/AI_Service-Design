@@ -378,6 +378,47 @@ test("mapPersonaDocumentToResolvedPersonaInput raises PERSONA_INPUT_TOO_LARGE ov
   );
 });
 
+test("mapPersonaDocumentToResolvedPersonaInput raises PERSONA_INPUT_TOO_LARGE when base content still exceeds the soft limit", () => {
+  const personaDocument = createPersonaDocument({
+    skeleton: {
+      summary: "需要非常长但仍低于硬阈值的基础摘要。".repeat(170),
+    },
+    behaviorInsights: [],
+    contextInsights: [],
+  });
+
+  const rawInput = mapPersonaDocumentToResolvedPersonaInput({
+    projectId: "project-1",
+    personaDocument,
+    applyLengthRules: false,
+  });
+  const baseOnlyInput = {
+    ...rawInput,
+    behaviorSummaries: [],
+    contextSummaries: [],
+  };
+
+  assert.ok(
+    estimateResolvedPersonaInputLength(rawInput) < HARD_PERSONA_INPUT_LIMIT,
+    "expected raw persona input to stay under the hard limit",
+  );
+  assert.ok(
+    estimateResolvedPersonaInputLength(baseOnlyInput) > SOFT_PERSONA_INPUT_LIMIT,
+    "expected base persona input to exceed the soft limit even without summaries",
+  );
+
+  assert.throws(
+    () =>
+      mapPersonaDocumentToResolvedPersonaInput({
+        projectId: "project-1",
+        personaDocument,
+      }),
+    (error) =>
+      error instanceof PersonaReadError &&
+      error.code === PERSONA_READ_ERROR_CODES.PERSONA_INPUT_TOO_LARGE,
+  );
+});
+
 test("renderResolvedPersonaInput is deterministic for length accounting", () => {
   const input = mapPersonaDocumentToResolvedPersonaInput({
     projectId: "project-1",
