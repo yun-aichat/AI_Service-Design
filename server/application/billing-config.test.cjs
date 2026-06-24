@@ -18,6 +18,8 @@ function createHarness(seed) {
 
 const reader = { id: "user-reader", roles: ["member"] };
 const admin = { id: "user-admin", roles: ["admin"] };
+const billingAdmin = { id: "user-billing-admin", roles: ["billing-admin"] };
+
 
 test("listCreditPackages paginates and filters package records", async () => {
   const { service } = createHarness({
@@ -275,4 +277,196 @@ test("listCreditLedger and listAiUsageEvents require admin access", async () => 
 
   assert.equal(ledger.items.length, 1);
   assert.equal(usage.items.length, 1);
+});
+
+
+
+
+test("updateActionPricing requires billing admin roles", async () => {
+  const { service } = createHarness({
+    aiActionPricing: {
+      "journey-map:skeleton_generate:standard": {
+        id: "journey-map:skeleton_generate:standard",
+        pricingId: "journey-map:skeleton_generate:standard",
+        toolKey: "journey-map",
+        actionKey: "skeleton_generate",
+        tierKey: "standard",
+        displayName: "Journey Skeleton",
+        creditCost: 5,
+        enabled: true,
+        version: 2,
+        createdAt: "2026-06-13T00:00:00.000Z",
+        createdBy: "seed-admin",
+        updatedAt: "2026-06-13T00:00:00.000Z",
+        updatedBy: "seed-admin",
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.updateActionPricing({
+        user: reader,
+        command: {
+          toolKey: "journey-map",
+          actionKey: "skeleton_generate",
+          creditCost: 8,
+          enabled: false,
+          expectedVersion: 2,
+        },
+      }),
+    (error) => error instanceof BillingConfigError && error.code === "FORBIDDEN",
+  );
+});
+
+test("updateActionPricing rejects negative credit cost", async () => {
+  const { service } = createHarness({
+    aiActionPricing: {
+      "journey-map:skeleton_generate:standard": {
+        id: "journey-map:skeleton_generate:standard",
+        pricingId: "journey-map:skeleton_generate:standard",
+        toolKey: "journey-map",
+        actionKey: "skeleton_generate",
+        tierKey: "standard",
+        displayName: "Journey Skeleton",
+        creditCost: 5,
+        enabled: true,
+        version: 2,
+        createdAt: "2026-06-13T00:00:00.000Z",
+        createdBy: "seed-admin",
+        updatedAt: "2026-06-13T00:00:00.000Z",
+        updatedBy: "seed-admin",
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.updateActionPricing({
+        user: admin,
+        command: {
+          toolKey: "journey-map",
+          actionKey: "skeleton_generate",
+          creditCost: -1,
+          enabled: true,
+          expectedVersion: 2,
+        },
+      }),
+    (error) => error instanceof BillingConfigError && error.code === "INVALID_INPUT",
+  );
+});
+
+test("updateActionPricing updates creditCost and enabled by toolKey/actionKey, preserves metadata, and bumps version", async () => {
+  const { service, repository } = createHarness({
+    aiActionPricing: {
+      "journey-map:skeleton_generate:standard": {
+        id: "journey-map:skeleton_generate:standard",
+        pricingId: "journey-map:skeleton_generate:standard",
+        toolKey: "journey-map",
+        actionKey: "skeleton_generate",
+        tierKey: "standard",
+        displayName: "Journey Skeleton",
+        description: "seed description",
+        creditCost: 5,
+        enabled: true,
+        metadata: { lockedBy: "seed" },
+        version: 2,
+        createdAt: "2026-06-13T00:00:00.000Z",
+        createdBy: "seed-admin",
+        updatedAt: "2026-06-13T00:00:00.000Z",
+        updatedBy: "seed-admin",
+      },
+    },
+  });
+
+  const record = await service.updateActionPricing({
+    user: billingAdmin,
+    command: {
+      toolKey: "journey-map",
+      actionKey: "skeleton_generate",
+      creditCost: 8,
+      enabled: false,
+      expectedVersion: 2,
+    },
+  });
+
+  assert.equal(record.creditCost, 8);
+  assert.equal(record.enabled, false);
+  assert.equal(record.version, 3);
+  assert.equal(record.displayName, "Journey Skeleton");
+  assert.equal(record.description, "seed description");
+  assert.deepEqual(record.metadata, { lockedBy: "seed" });
+  assert.equal(record.updatedBy, "user-billing-admin");
+  assert.equal(record.createdBy, "seed-admin");
+
+  const stored = await repository.getRecord(
+    "ai_action_pricing",
+    "journey-map:skeleton_generate:standard",
+  );
+  assert.equal(stored.creditCost, 8);
+  assert.equal(stored.enabled, false);
+  assert.equal(stored.version, 3);
+});
+
+test("updateActionPricing returns a version conflict when expectedVersion is stale", async () => {
+  const { service } = createHarness({
+    aiActionPricing: {
+      "journey-map:skeleton_generate:standard": {
+        id: "journey-map:skeleton_generate:standard",
+        pricingId: "journey-map:skeleton_generate:standard",
+        toolKey: "journey-map",
+        actionKey: "skeleton_generate",
+        tierKey: "standard",
+        displayName: "Journey Skeleton",
+        creditCost: 5,
+        enabled: true,
+        version: 2,
+        createdAt: "2026-06-13T00:00:00.000Z",
+        createdBy: "seed-admin",
+        updatedAt: "2026-06-13T00:00:00.000Z",
+        updatedBy: "seed-admin",
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.updateActionPricing({
+        user: admin,
+        command: {
+          toolKey: "journey-map",
+          actionKey: "skeleton_generate",
+          creditCost: 8,
+          enabled: false,
+          expectedVersion: 1,
+        },
+      }),
+    (error) =>
+      error instanceof BillingConfigError &&
+      error.code === "ACTION_PRICING_VERSION_CONFLICT" &&
+      error.status === 409,
+  );
+});
+
+
+test("updateActionPricing returns not found when toolKey/actionKey has no pricing record", async () => {
+  const { service } = createHarness();
+
+  await assert.rejects(
+    () =>
+      service.updateActionPricing({
+        user: admin,
+        command: {
+          toolKey: "journey-map",
+          actionKey: "skeleton_generate",
+          creditCost: 8,
+          enabled: false,
+          expectedVersion: 0,
+        },
+      }),
+    (error) =>
+      error instanceof BillingConfigError &&
+      error.code === "ACTION_PRICING_NOT_FOUND" &&
+      error.status === 404,
+  );
 });

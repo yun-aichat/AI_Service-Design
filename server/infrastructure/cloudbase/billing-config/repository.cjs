@@ -56,6 +56,30 @@ class CloudBaseBillingConfigRepository {
     await getCollection(this.collections, collectionName).doc(recordId).set(record);
     return record;
   }
+
+  async findActionPricingRecord(toolKey, actionKey) {
+    const matches = records(
+      await this.collections[COLLECTIONS.aiActionPricing]
+        .where({ toolKey, actionKey })
+        .limit(2)
+        .get(),
+    );
+    if (matches.length > 1) {
+      throw new Error(
+        `Multiple action pricing records matched toolKey/actionKey "${toolKey}/${actionKey}".`,
+      );
+    }
+    return matches[0] || null;
+  }
+
+  async updateActionPricingRecordIfVersion(recordId, expectedVersion, nextRecord) {
+    return updateIfVersion(
+      this.collections[COLLECTIONS.aiActionPricing],
+      recordId,
+      expectedVersion,
+      nextRecord,
+    );
+  }
 }
 
 function compactFilters(filters) {
@@ -145,6 +169,28 @@ function requireSortDirection(value) {
     throw new Error("sortDirection must be asc or desc.");
   }
   return direction;
+}
+
+function records(result) {
+  if (!result?.data) return [];
+  return Array.isArray(result.data) ? result.data : [result.data];
+}
+
+async function updateIfVersion(collection, recordId, expectedVersion, nextRecord) {
+  const result = await collection
+    .where({ id: recordId, version: expectedVersion })
+    .update(nextRecord);
+  return updateCount(result) === 1;
+}
+
+function updateCount(result) {
+  return Number(
+    result?.updated ??
+      result?.modified ??
+      result?.stats?.updated ??
+      result?.stats?.modified ??
+      0,
+  );
 }
 
 function firstRecord(result) {

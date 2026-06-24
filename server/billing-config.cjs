@@ -27,6 +27,8 @@ async function handleBillingConfig(request) {
       return service.listCreditLedger({ ...body, user });
     case "listAiUsageEvents":
       return service.listAiUsageEvents({ ...body, user });
+    case "updateActionPricing":
+      return service.updateActionPricing({ user, command: body?.command || body });
     case "upsertCreditPackage":
       return service.upsertCreditPackage({ ...body, user });
     case "upsertAiActionPricing":

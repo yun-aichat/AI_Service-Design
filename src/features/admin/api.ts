@@ -27,6 +27,29 @@ export type CreditLedgerRecord = {
   createdAt: string;
 };
 
+export type AiActionPricingRecord = {
+  id: string;
+  pricingId: string;
+  toolKey: string;
+  actionKey: string;
+  tierKey: string | null;
+  displayName: string;
+  description: string | null;
+  creditCost: number;
+  enabled: boolean;
+  version: number;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type UpdateActionPricingCommand = {
+  toolKey: string;
+  actionKey: string;
+  creditCost: number;
+  enabled: boolean;
+  expectedVersion: number;
+};
+
 export type AiUsageEventRecord = {
   id: string;
   userId: string | null;
@@ -109,6 +132,12 @@ export async function listCreditLedger(input?: {
   sortDirection?: string;
 }): Promise<BillingPage<CreditLedgerRecord>> {
   return requestBillingConfig("listCreditLedger", input);
+}
+
+export async function updateActionPricing(
+  command: UpdateActionPricingCommand,
+): Promise<AiActionPricingRecord> {
+  return requestBillingConfig("updateActionPricing", { command });
 }
 
 export async function listAiUsageEvents(input?: {

@@ -78,6 +78,32 @@ class InMemoryBillingConfigRepository {
     collection.set(recordId, cloneJson(record));
     return cloneJson(record);
   }
+
+  async findActionPricingRecord(toolKey, actionKey) {
+    const collection = requireCollection(this.collections, COLLECTIONS.aiActionPricing);
+    const matches = [...collection.values()].filter(
+      (record) => record?.toolKey === toolKey && record?.actionKey === actionKey,
+    );
+    if (matches.length > 1) {
+      throw new BillingConfigError(
+        "ACTION_PRICING_AMBIGUOUS",
+        `Multiple action pricing records matched toolKey/actionKey "${toolKey}/${actionKey}".`,
+        409,
+      );
+    }
+    return cloneJson(matches[0] || null);
+  }
+
+  async updateActionPricingRecordIfVersion(recordId, expectedVersion, nextRecord) {
+    const collection = requireCollection(this.collections, COLLECTIONS.aiActionPricing);
+    const current = collection.get(recordId);
+    const currentVersion = Number.isInteger(current?.version) && current.version >= 0 ? current.version : 0;
+    if (!current || currentVersion !== expectedVersion) {
+      return false;
+    }
+    collection.set(recordId, cloneJson(nextRecord));
+    return true;
+  }
 }
 
 function createBillingConfigService({
@@ -235,6 +261,73 @@ function createBillingConfigService({
     return nextRecord;
   }
 
+  async function updateActionPricing(input = {}) {
+    const user = assertAdminUser(input.user);
+    const command = validateUpdateActionPricingCommand(input.command || {});
+    let existing;
+    try {
+      existing = await repository.findActionPricingRecord(command.toolKey, command.actionKey);
+    } catch (error) {
+      if (error instanceof BillingConfigError) {
+        throw error;
+      }
+      throw new BillingConfigError(
+        "ACTION_PRICING_LOOKUP_FAILED",
+        error instanceof Error ? error.message : "Failed to read action pricing record.",
+        500,
+      );
+    }
+
+    if (!existing) {
+      throw new BillingConfigError(
+        "ACTION_PRICING_NOT_FOUND",
+        `Action pricing was not found for ${command.toolKey}/${command.actionKey}.`,
+        404,
+      );
+    }
+
+    const currentVersion = Number.isInteger(existing.version) && existing.version >= 0 ? existing.version : 0;
+    if (currentVersion !== command.expectedVersion) {
+      throw new BillingConfigError(
+        "ACTION_PRICING_VERSION_CONFLICT",
+        `Expected action pricing version ${command.expectedVersion}, but current version is ${currentVersion}.`,
+        409,
+      );
+    }
+
+    const recordId = requireString(existing.pricingId || existing.id, "existing.pricingId");
+    const timestamp = now();
+    const nextRecord = {
+      ...existing,
+      id: recordId,
+      pricingId: recordId,
+      toolKey: existing.toolKey,
+      actionKey: existing.actionKey,
+      creditCost: command.creditCost,
+      enabled: command.enabled,
+      createdAt: existing.createdAt || timestamp,
+      createdBy: existing.createdBy || user.id,
+      updatedAt: timestamp,
+      updatedBy: user.id,
+      version: currentVersion + 1,
+    };
+
+    const updated = await repository.updateActionPricingRecordIfVersion(
+      recordId,
+      currentVersion,
+      nextRecord,
+    );
+    if (!updated) {
+      throw new BillingConfigError(
+        "ACTION_PRICING_VERSION_CONFLICT",
+        `Expected action pricing version ${currentVersion}, but update lost the race.`,
+        409,
+      );
+    }
+
+    return nextRecord;
+  }
+
   async function upsertAiModelPolicy(input = {}) {
     const user = assertAdminUser(input.user);
     const record = validateAiModelPolicy(input.record || {});
@@ -326,6 +419,7 @@ function createBillingConfigService({
     listCreditLedger,
     listCreditPackages,
     recordAiUsageEvent,
+    updateActionPricing,
     upsertAiActionPricing,
     upsertAiModelPolicy,
     upsertCreditPackage,
@@ -376,6 +470,23 @@ function validateAiActionPricing(input) {
     enabled: requireBoolean(input.enabled, "record.enabled"),
     description: optionalString(input.description),
     metadata: cloneJson(input.metadata || null),
+  };
+}
+
+function validateUpdateActionPricingCommand(command) {
+  if (!command || typeof command !== "object") {
+    throw new BillingConfigError("INVALID_INPUT", "command must be a non-null object.");
+  }
+
+  return {
+    toolKey: requireString(command.toolKey, "command.toolKey"),
+    actionKey: requireString(command.actionKey, "command.actionKey"),
+    creditCost: requireNonNegativeInteger(command.creditCost, "command.creditCost"),
+    enabled: requireBoolean(command.enabled, "command.enabled"),
+    expectedVersion: requireNonNegativeInteger(
+      command.expectedVersion,
+      "command.expectedVersion",
+    ),
   };
 }
 

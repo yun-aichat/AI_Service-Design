@@ -370,6 +370,16 @@ function createFakeQuery(store, queryLog, query = {}, state = {}) {
       queryLog.push({ type: "count" });
       return { total: applyFakeQuery([...store.values()], nextState.query).length };
     },
+    async update(record) {
+      queryLog.push({ type: "update", record: cloneJson(record) });
+      const matched = applyFakeQuery([...store.values()], nextState.query);
+      if (matched.length !== 1) {
+        return { updated: 0 };
+      }
+      const current = matched[0];
+      store.set(current.id, cloneJson(record));
+      return { updated: 1 };
+    },
   };
 }
 
@@ -439,3 +449,113 @@ function applyFakeOrdering(records, field, direction) {
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
+
+
+test("findActionPricingRecord returns the unique pricing record for toolKey and actionKey", async () => {
+  const { repository } = createRepository({
+    ai_action_pricing: {
+      "journey-map:skeleton_generate:standard": {
+        id: "journey-map:skeleton_generate:standard",
+        pricingId: "journey-map:skeleton_generate:standard",
+        toolKey: "journey-map",
+        actionKey: "skeleton_generate",
+        tierKey: "standard",
+        creditCost: 5,
+        enabled: true,
+        version: 2,
+      },
+    },
+  });
+
+  const record = await repository.findActionPricingRecord("journey-map", "skeleton_generate");
+
+  assert.equal(record.pricingId, "journey-map:skeleton_generate:standard");
+  assert.equal(record.version, 2);
+});
+
+test("findActionPricingRecord rejects ambiguous toolKey and actionKey matches", async () => {
+  const { repository } = createRepository({
+    ai_action_pricing: {
+      "journey-map:skeleton_generate:standard": {
+        id: "journey-map:skeleton_generate:standard",
+        pricingId: "journey-map:skeleton_generate:standard",
+        toolKey: "journey-map",
+        actionKey: "skeleton_generate",
+        tierKey: "standard",
+        creditCost: 5,
+        enabled: true,
+        version: 2,
+      },
+      "journey-map:skeleton_generate:deep": {
+        id: "journey-map:skeleton_generate:deep",
+        pricingId: "journey-map:skeleton_generate:deep",
+        toolKey: "journey-map",
+        actionKey: "skeleton_generate",
+        tierKey: "deep",
+        creditCost: 8,
+        enabled: true,
+        version: 1,
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => repository.findActionPricingRecord("journey-map", "skeleton_generate"),
+    /Multiple action pricing records matched toolKey\/actionKey/,
+  );
+});
+
+test("updateActionPricingRecordIfVersion persists the next version only when expectedVersion matches", async () => {
+  const { repository, stores } = createRepository({
+    ai_action_pricing: {
+      "journey-map:skeleton_generate:standard": {
+        id: "journey-map:skeleton_generate:standard",
+        pricingId: "journey-map:skeleton_generate:standard",
+        toolKey: "journey-map",
+        actionKey: "skeleton_generate",
+        tierKey: "standard",
+        creditCost: 5,
+        enabled: true,
+        version: 2,
+      },
+    },
+  });
+
+  const updated = await repository.updateActionPricingRecordIfVersion(
+    "journey-map:skeleton_generate:standard",
+    2,
+    {
+      id: "journey-map:skeleton_generate:standard",
+      pricingId: "journey-map:skeleton_generate:standard",
+      toolKey: "journey-map",
+      actionKey: "skeleton_generate",
+      tierKey: "standard",
+      creditCost: 8,
+      enabled: false,
+      version: 3,
+    },
+  );
+
+  assert.equal(updated, true);
+  assert.equal(stores.ai_action_pricing.get("journey-map:skeleton_generate:standard").creditCost, 8);
+  assert.equal(stores.ai_action_pricing.get("journey-map:skeleton_generate:standard").version, 3);
+
+  const stale = await repository.updateActionPricingRecordIfVersion(
+    "journey-map:skeleton_generate:standard",
+    2,
+    {
+      id: "journey-map:skeleton_generate:standard",
+      pricingId: "journey-map:skeleton_generate:standard",
+      toolKey: "journey-map",
+      actionKey: "skeleton_generate",
+      tierKey: "standard",
+      creditCost: 9,
+      enabled: true,
+      version: 4,
+    },
+  );
+
+  assert.equal(stale, false);
+  assert.equal(stores.ai_action_pricing.get("journey-map:skeleton_generate:standard").creditCost, 8);
+  assert.equal(stores.ai_action_pricing.get("journey-map:skeleton_generate:standard").version, 3);
+});
