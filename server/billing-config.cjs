@@ -13,26 +13,29 @@ async function handleBillingConfig(request) {
   const body = await readJsonBody(request);
   const action = requireAction(body?.action);
   const service = getBillingConfigService();
+  const payload = omitAction(body);
 
   switch (action) {
     case "debugAuthProfile":
       return { user };
     case "listCreditPackages":
-      return service.listCreditPackages({ ...body, user });
+      return service.listCreditPackages({ ...payload, user });
     case "listAiActionPricing":
-      return service.listAiActionPricing({ ...body, user });
+      return service.listAiActionPricing({ ...payload, user });
     case "listAiModelPolicies":
-      return service.listAiModelPolicies({ ...body, user });
+      return service.listAiModelPolicies({ ...payload, user });
     case "listCreditLedger":
-      return service.listCreditLedger({ ...body, user });
+      return service.listCreditLedger({ ...payload, user });
     case "listAiUsageEvents":
-      return service.listAiUsageEvents({ ...body, user });
+      return service.listAiUsageEvents({ ...payload, user });
     case "upsertCreditPackage":
-      return service.upsertCreditPackage({ ...body, user });
+      return service.upsertCreditPackage({ ...payload, user });
     case "upsertAiActionPricing":
-      return service.upsertAiActionPricing({ ...body, user });
+      return service.upsertAiActionPricing({ ...payload, user });
+    case "updateModelPolicy":
+      return service.updateModelPolicy({ user, command: payload });
     case "upsertAiModelPolicy":
-      return service.upsertAiModelPolicy({ ...body, user });
+      return service.upsertAiModelPolicy({ user, record: payload.record || payload });
     default:
       throw new BillingConfigError(
         "UNKNOWN_ACTION",
@@ -128,6 +131,12 @@ function requireAction(value) {
     throw new BillingConfigError("INVALID_INPUT", "action is required.");
   }
   return value.trim();
+}
+
+function omitAction(body) {
+  const payload = { ...(body || {}) };
+  delete payload.action;
+  return payload;
 }
 
 function sendJson(response, status, body) {

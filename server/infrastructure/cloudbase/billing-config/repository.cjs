@@ -56,6 +56,25 @@ class CloudBaseBillingConfigRepository {
     await getCollection(this.collections, collectionName).doc(recordId).set(record);
     return record;
   }
+
+  async saveRecordWithVersion(collectionName, recordId, expectedVersion, record) {
+    const collection = getCollection(this.collections, collectionName);
+    if (expectedVersion === 0) {
+      if (await getDocument(collection, recordId)) {
+        return false;
+      }
+      try {
+        await createDocument(collection, recordId, record);
+        return true;
+      } catch (error) {
+        if (isDuplicateKeyError(error)) return false;
+        throw error;
+      }
+    }
+
+    const result = await collection.where({ id: recordId, version: expectedVersion }).update(record);
+    return updateCount(result) === 1;
+  }
 }
 
 function compactFilters(filters) {
@@ -152,6 +171,39 @@ function firstRecord(result) {
   if (Array.isArray(result.data)) return result.data[0] || null;
   if (result.data && typeof result.data === "object") return result.data;
   return null;
+}
+
+async function getDocument(collection, recordId) {
+  return firstRecord(await collection.doc(recordId).get());
+}
+
+async function createDocument(collection, recordId, record) {
+  if (typeof collection.add === "function") {
+    await collection.add({ _id: recordId, ...record });
+    return;
+  }
+  await collection.doc(recordId).set(record);
+}
+
+function updateCount(result) {
+  return Number(
+    result?.updated ??
+      result?.modified ??
+      result?.stats?.updated ??
+      result?.stats?.modified ??
+      0,
+  );
+}
+
+function isDuplicateKeyError(error) {
+  const code = String(error?.code || error?.errCode || "").toLowerCase();
+  const message = String(error?.message || error?.errMsg || "").toLowerCase();
+  return (
+    code.includes("duplicate") ||
+    code.includes("already_exist") ||
+    message.includes("duplicate key") ||
+    message.includes("already exists")
+  );
 }
 
 module.exports = {

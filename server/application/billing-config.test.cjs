@@ -18,6 +18,7 @@ function createHarness(seed) {
 
 const reader = { id: "user-reader", roles: ["member"] };
 const admin = { id: "user-admin", roles: ["admin"] };
+const billingAdmin = { id: "user-billing-admin", roles: ["billing-admin"] };
 
 test("listCreditPackages paginates and filters package records", async () => {
   const { service } = createHarness({
@@ -167,72 +168,174 @@ test("upsertAiActionPricing accepts a consistent id, rejects an inconsistent id,
   );
 });
 
-test("upsertAiModelPolicy validates fallback provider/model pairs", async () => {
-  const { service } = createHarness();
+test("updateModelPolicy creates a versioned model policy and only stores apiKeyRef", async () => {
+  const { service, repository } = createHarness();
 
-  await assert.rejects(
-    () =>
-      service.upsertAiModelPolicy({
-        user: admin,
-        record: {
-          toolKey: "journey-map",
-          actionKey: "proposal",
-          tierKey: "deep",
-          provider: "openai",
-          model: "gpt-5-mini",
-          temperature: 0.4,
-          maxInputTokens: 8000,
-          maxOutputTokens: 2000,
-          timeoutMs: 30000,
-          fallbackProvider: "glm",
-          enabled: true,
-        },
-      }),
-    /fallbackProvider and fallbackModel must be provided together/,
-  );
-});
-
-test("upsertAiModelPolicy accepts a consistent id and rejects an inconsistent id", async () => {
-  const { service } = createHarness();
-
-  const record = await service.upsertAiModelPolicy({
-    user: admin,
-    record: {
-      policyId: "journey-map:proposal:standard",
+  const record = await service.updateModelPolicy({
+    user: billingAdmin,
+    command: {
       toolKey: "journey-map",
       actionKey: "proposal",
-      tierKey: "standard",
-      provider: "glm",
-      model: "glm-4.5",
+      providerKey: "glm",
+      modelKey: "glm-4.6",
+      endpoint: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+      apiKeyRef: "secrets/glm/default",
       temperature: 0.2,
       maxInputTokens: 8000,
       maxOutputTokens: 2000,
       timeoutMs: 30000,
       enabled: true,
+      expectedVersion: 0,
     },
   });
 
-  assert.equal(record.policyId, "journey-map:proposal:standard");
+  assert.equal(record.policyId, "journey-map:proposal");
+  assert.equal(record.providerKey, "glm");
+  assert.equal(record.modelKey, "glm-4.6");
+  assert.equal(record.provider, "glm");
+  assert.equal(record.model, "glm-4.6");
+  assert.equal(record.apiKeyRef, "secrets/glm/default");
+  assert.equal(record.version, 1);
+  assert.equal(record.createdBy, "user-billing-admin");
+  assert.equal(record.updatedBy, "user-billing-admin");
+  assert.equal(record.apiKey, undefined);
+
+  const stored = await repository.getRecord("ai_model_policies", "journey-map:proposal");
+  assert.equal(stored.apiKeyRef, "secrets/glm/default");
+  assert.equal(stored.apiKey, undefined);
+});
+
+test("updateModelPolicy requires admin or billing-admin", async () => {
+  const { service } = createHarness();
 
   await assert.rejects(
     () =>
-      service.upsertAiModelPolicy({
-        user: admin,
-        record: {
-          policyId: "journey-map:proposal:deep",
+      service.updateModelPolicy({
+        user: reader,
+        command: {
           toolKey: "journey-map",
           actionKey: "proposal",
-          tierKey: "standard",
-          provider: "glm",
-          model: "glm-4.5",
+          providerKey: "glm",
+          modelKey: "glm-4.6",
+          endpoint: null,
+          apiKeyRef: "secrets/glm/default",
           temperature: 0.2,
           maxInputTokens: 8000,
           maxOutputTokens: 2000,
           timeoutMs: 30000,
           enabled: true,
+          expectedVersion: 0,
         },
       }),
-    /policyId must match toolKey:actionKey:tierKey/,
+    (error) => error instanceof BillingConfigError && error.code === "FORBIDDEN",
+  );
+});
+
+test("updateModelPolicy enforces expectedVersion and increments version on update", async () => {
+  const { service } = createHarness({
+    aiModelPolicies: {
+      "journey-map:proposal": {
+        id: "journey-map:proposal",
+        policyId: "journey-map:proposal",
+        toolKey: "journey-map",
+        actionKey: "proposal",
+        providerKey: "glm",
+        modelKey: "glm-4.5",
+        provider: "glm",
+        model: "glm-4.5",
+        endpoint: null,
+        apiKeyRef: "secrets/glm/old",
+        temperature: 0.3,
+        maxInputTokens: 6000,
+        maxOutputTokens: 1500,
+        timeoutMs: 25000,
+        enabled: true,
+        version: 2,
+        createdAt: "2026-06-13T00:00:00.000Z",
+        createdBy: "seed-admin",
+        updatedAt: "2026-06-13T00:00:00.000Z",
+        updatedBy: "seed-admin",
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.updateModelPolicy({
+        user: admin,
+        command: {
+          toolKey: "journey-map",
+          actionKey: "proposal",
+          providerKey: "glm",
+          modelKey: "glm-4.6",
+          endpoint: null,
+          apiKeyRef: "secrets/glm/default",
+          temperature: 0.2,
+          maxInputTokens: 8000,
+          maxOutputTokens: 2000,
+          timeoutMs: 30000,
+          enabled: true,
+          expectedVersion: 1,
+        },
+      }),
+    (error) =>
+      error instanceof BillingConfigError &&
+      error.code === "VERSION_CONFLICT" &&
+      error.status === 409,
+  );
+
+  const updated = await service.updateModelPolicy({
+    user: admin,
+    command: {
+      toolKey: "journey-map",
+      actionKey: "proposal",
+      providerKey: "openai",
+      modelKey: "gpt-5-mini",
+      endpoint: "https://api.openai.com/v1",
+      apiKeyRef: "secrets/openai/default",
+      temperature: 0.1,
+      maxInputTokens: 12000,
+      maxOutputTokens: 4000,
+      timeoutMs: 45000,
+      enabled: false,
+      expectedVersion: 2,
+    },
+  });
+
+  assert.equal(updated.version, 3);
+  assert.equal(updated.createdBy, "seed-admin");
+  assert.equal(updated.updatedBy, "user-admin");
+  assert.equal(updated.providerKey, "openai");
+  assert.equal(updated.modelKey, "gpt-5-mini");
+});
+
+test("updateModelPolicy rejects illegal fields and missing apiKeyRef-only contract", async () => {
+  const { service } = createHarness();
+
+  await assert.rejects(
+    () =>
+      service.updateModelPolicy({
+        user: admin,
+        command: {
+          toolKey: "journey-map",
+          actionKey: "proposal",
+          providerKey: "glm",
+          modelKey: "glm-4.6",
+          endpoint: null,
+          apiKeyRef: "secrets/glm/default",
+          apiKey: "sk-live-raw-secret",
+          temperature: 0.2,
+          maxInputTokens: 8000,
+          maxOutputTokens: 2000,
+          timeoutMs: 30000,
+          enabled: true,
+          expectedVersion: 0,
+        },
+      }),
+    (error) =>
+      error instanceof BillingConfigError &&
+      error.code === "INVALID_INPUT" &&
+      /Unsupported model policy fields: apiKey/.test(error.message),
   );
 });
 

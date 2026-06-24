@@ -7,6 +7,20 @@ const COLLECTIONS = Object.freeze({
 });
 
 const ADMIN_ROLES = Object.freeze(["admin", "billing-admin"]);
+const MODEL_POLICY_COMMAND_FIELDS = Object.freeze([
+  "toolKey",
+  "actionKey",
+  "providerKey",
+  "modelKey",
+  "endpoint",
+  "apiKeyRef",
+  "temperature",
+  "maxInputTokens",
+  "maxOutputTokens",
+  "timeoutMs",
+  "enabled",
+  "expectedVersion",
+]);
 
 class BillingConfigError extends Error {
   constructor(code, message, status = 400) {
@@ -78,6 +92,19 @@ class InMemoryBillingConfigRepository {
     collection.set(recordId, cloneJson(record));
     return cloneJson(record);
   }
+
+  async saveRecordWithVersion(collectionName, recordId, expectedVersion, record) {
+    const collection = requireCollection(this.collections, collectionName);
+    const current = collection.get(recordId);
+    if (!current) {
+      if (expectedVersion !== 0) return false;
+      collection.set(recordId, cloneJson(record));
+      return true;
+    }
+    if (current.version !== expectedVersion) return false;
+    collection.set(recordId, cloneJson(record));
+    return true;
+  }
 }
 
 function createBillingConfigService({
@@ -128,17 +155,19 @@ function createBillingConfigService({
 
   async function listAiModelPolicies(input = {}) {
     assertAuthenticatedUser(input.user);
-    return listCollection({
+    const page = await listCollection({
       collectionName: COLLECTIONS.aiModelPolicies,
-      filters: pickDefinedFilters(input, [
-        "policyId",
-        "toolKey",
-        "actionKey",
-        "tierKey",
-        "provider",
-        "model",
-        "enabled",
-      ]),
+      filters: pickDefinedFilters(
+        {
+          policyId: input.policyId,
+          toolKey: input.toolKey,
+          actionKey: input.actionKey,
+          providerKey: input.providerKey ?? input.provider,
+          modelKey: input.modelKey ?? input.model,
+          enabled: input.enabled,
+        },
+        ["policyId", "toolKey", "actionKey", "providerKey", "modelKey", "enabled"],
+      ),
       sortBy: optionalString(input.sortBy) || "updatedAt",
       sortDirection: optionalString(input.sortDirection) || "desc",
       limit: input.limit,
@@ -146,6 +175,11 @@ function createBillingConfigService({
       createdFrom: input.createdFrom,
       createdTo: input.createdTo,
     });
+
+    return {
+      ...page,
+      items: page.items.map((record) => normalizeAiModelPolicyRecord(record)),
+    };
   }
 
   async function listCreditLedger(input = {}) {
@@ -235,24 +269,58 @@ function createBillingConfigService({
     return nextRecord;
   }
 
-  async function upsertAiModelPolicy(input = {}) {
+  async function updateModelPolicy(input = {}) {
     const user = assertAdminUser(input.user);
-    const record = validateAiModelPolicy(input.record || {});
-    const policyId = record.policyId || `${record.toolKey}:${record.actionKey}:${record.tierKey}`;
+    const command = validateModelPolicyCommand(input.command || {});
+    const policyId = command.policyId;
     const existing = await repository.getRecord(COLLECTIONS.aiModelPolicies, policyId);
+    const currentVersion = existing ? requireStoredVersion(existing.version) : 0;
+    if (currentVersion !== command.expectedVersion) {
+      throw new BillingConfigError(
+        "VERSION_CONFLICT",
+        `Model policy version conflict for \"${policyId}\". Expected ${command.expectedVersion}, found ${currentVersion}.`,
+        409,
+      );
+    }
+
     const timestamp = now();
-    const nextRecord = {
+    const nextRecord = normalizeAiModelPolicyRecord({
       ...existing,
-      ...record,
+      ...command,
       id: policyId,
       policyId,
       createdAt: existing?.createdAt || timestamp,
       createdBy: existing?.createdBy || user.id,
       updatedAt: timestamp,
       updatedBy: user.id,
-    };
-    await repository.upsertRecord(COLLECTIONS.aiModelPolicies, policyId, nextRecord);
+      version: currentVersion + 1,
+    });
+
+    const saved = repository.saveRecordWithVersion
+      ? await repository.saveRecordWithVersion(
+          COLLECTIONS.aiModelPolicies,
+          policyId,
+          command.expectedVersion,
+          nextRecord,
+        )
+      : (await repository.upsertRecord(COLLECTIONS.aiModelPolicies, policyId, nextRecord), true);
+
+    if (!saved) {
+      throw new BillingConfigError(
+        "VERSION_CONFLICT",
+        `Model policy version conflict for \"${policyId}\".`,
+        409,
+      );
+    }
+
     return nextRecord;
+  }
+
+  async function upsertAiModelPolicy(input = {}) {
+    return updateModelPolicy({
+      user: input.user,
+      command: translateLegacyModelPolicyRecord(input.record || {}),
+    });
   }
 
   async function listCollection(input) {
@@ -326,6 +394,7 @@ function createBillingConfigService({
     listCreditLedger,
     listCreditPackages,
     recordAiUsageEvent,
+    updateModelPolicy,
     upsertAiActionPricing,
     upsertAiModelPolicy,
     upsertCreditPackage,
@@ -379,44 +448,78 @@ function validateAiActionPricing(input) {
   };
 }
 
-function validateAiModelPolicy(input) {
-  const toolKey = requireString(input.toolKey, "record.toolKey");
-  const actionKey = requireString(input.actionKey, "record.actionKey");
-  const tierKey = requireString(input.tierKey, "record.tierKey");
-  const derivedPolicyId = `${toolKey}:${actionKey}:${tierKey}`;
-  const providedPolicyId = optionalString(input.policyId);
-  if (providedPolicyId && providedPolicyId !== derivedPolicyId) {
-    throw new BillingConfigError(
-      "INVALID_INPUT",
-      "policyId must match toolKey:actionKey:tierKey.",
-    );
+function validateModelPolicyCommand(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new BillingConfigError("INVALID_INPUT", "command must be a non-null object.");
   }
-  const fallbackProvider = optionalString(input.fallbackProvider);
-  const fallbackModel = optionalString(input.fallbackModel);
-  if ((fallbackProvider && !fallbackModel) || (!fallbackProvider && fallbackModel)) {
-    throw new BillingConfigError(
-      "INVALID_INPUT",
-      "fallbackProvider and fallbackModel must be provided together.",
-    );
-  }
+  assertAllowedFields(input, MODEL_POLICY_COMMAND_FIELDS, "model policy");
+
+  const toolKey = requireString(input.toolKey, "command.toolKey");
+  const actionKey = requireString(input.actionKey, "command.actionKey");
+  const providerKey = requireString(input.providerKey, "command.providerKey");
+  const modelKey = requireString(input.modelKey, "command.modelKey");
 
   return {
-    policyId: derivedPolicyId,
+    policyId: buildModelPolicyId(toolKey, actionKey),
     toolKey,
     actionKey,
-    tierKey,
-    provider: requireString(input.provider, "record.provider"),
-    model: requireString(input.model, "record.model"),
-    temperature: requireFiniteNumber(input.temperature, "record.temperature"),
-    maxInputTokens: requirePositiveInteger(input.maxInputTokens, "record.maxInputTokens"),
-    maxOutputTokens: requirePositiveInteger(input.maxOutputTokens, "record.maxOutputTokens"),
-    timeoutMs: requirePositiveInteger(input.timeoutMs, "record.timeoutMs"),
-    fallbackProvider,
-    fallbackModel,
-    enabled: requireBoolean(input.enabled, "record.enabled"),
-    description: optionalString(input.description),
-    metadata: cloneJson(input.metadata || null),
+    providerKey,
+    modelKey,
+    provider: providerKey,
+    model: modelKey,
+    endpoint: optionalNullableString(input.endpoint, "command.endpoint"),
+    apiKeyRef: requireString(input.apiKeyRef, "command.apiKeyRef"),
+    temperature: requireFiniteNumber(input.temperature, "command.temperature"),
+    maxInputTokens: requirePositiveInteger(input.maxInputTokens, "command.maxInputTokens"),
+    maxOutputTokens: requirePositiveInteger(input.maxOutputTokens, "command.maxOutputTokens"),
+    timeoutMs: requirePositiveInteger(input.timeoutMs, "command.timeoutMs"),
+    enabled: requireBoolean(input.enabled, "command.enabled"),
+    expectedVersion: requireNonNegativeInteger(input.expectedVersion, "command.expectedVersion"),
   };
+}
+
+function translateLegacyModelPolicyRecord(record) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throw new BillingConfigError("INVALID_INPUT", "record must be a non-null object.");
+  }
+  return {
+    toolKey: record.toolKey,
+    actionKey: record.actionKey,
+    providerKey: record.providerKey ?? record.provider,
+    modelKey: record.modelKey ?? record.model,
+    endpoint: record.endpoint ?? null,
+    apiKeyRef: record.apiKeyRef,
+    temperature: record.temperature,
+    maxInputTokens: record.maxInputTokens,
+    maxOutputTokens: record.maxOutputTokens,
+    timeoutMs: record.timeoutMs,
+    enabled: record.enabled,
+    expectedVersion: record.expectedVersion ?? record.version ?? 0,
+  };
+}
+
+function normalizeAiModelPolicyRecord(record) {
+  if (!record || typeof record !== "object") return record;
+  const providerKey = safeOptionalString(record.providerKey) || safeOptionalString(record.provider);
+  const modelKey = safeOptionalString(record.modelKey) || safeOptionalString(record.model);
+  return {
+    ...cloneJson(record),
+    policyId:
+      safeOptionalString(record.policyId) ||
+      (safeOptionalString(record.toolKey) && safeOptionalString(record.actionKey)
+        ? buildModelPolicyId(record.toolKey, record.actionKey)
+        : null),
+    providerKey,
+    modelKey,
+    provider: providerKey,
+    model: modelKey,
+    endpoint: safeOptionalString(record.endpoint),
+    apiKeyRef: safeOptionalString(record.apiKeyRef),
+  };
+}
+
+function buildModelPolicyId(toolKey, actionKey) {
+  return `${toolKey}:${actionKey}`;
 }
 
 function validateAiUsageEvent(record) {
@@ -523,6 +626,20 @@ function assertAdminUser(user) {
   return user;
 }
 
+function assertAllowedFields(input, allowedFields, label) {
+  const unsupported = Object.keys(input).filter((key) => !allowedFields.includes(key));
+  if (unsupported.length > 0) {
+    throw new BillingConfigError(
+      "INVALID_INPUT",
+      `Unsupported ${label} fields: ${unsupported.join(", ")}.`,
+    );
+  }
+}
+
+function requireStoredVersion(value) {
+  return requireNonNegativeInteger(value ?? 0, "record.version");
+}
+
 function requireCollection(collections, collectionName) {
   const collection = collections[collectionName];
   if (!collection) {
@@ -625,6 +742,15 @@ function requireString(value, field) {
 function optionalString(value) {
   if (value === undefined || value === null || value === "") return null;
   return requireString(value, "value");
+}
+
+function optionalNullableString(value, field) {
+  if (value === undefined || value === null || value === "") return null;
+  return requireString(value, field);
+}
+
+function safeOptionalString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function cloneJson(value) {

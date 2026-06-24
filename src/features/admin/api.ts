@@ -27,6 +27,44 @@ export type CreditLedgerRecord = {
   createdAt: string;
 };
 
+export type AiModelPolicyRecord = {
+  id: string;
+  policyId: string;
+  toolKey: string;
+  actionKey: string;
+  providerKey: string;
+  modelKey: string;
+  provider: string;
+  model: string;
+  endpoint: string | null;
+  apiKeyRef: string | null;
+  temperature: number;
+  maxInputTokens: number;
+  maxOutputTokens: number;
+  timeoutMs: number;
+  enabled: boolean;
+  version: number;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+};
+
+export type UpdateModelPolicyCommand = {
+  toolKey: string;
+  actionKey: string;
+  providerKey: string;
+  modelKey: string;
+  endpoint?: string | null;
+  apiKeyRef: string;
+  temperature: number;
+  maxInputTokens: number;
+  maxOutputTokens: number;
+  timeoutMs: number;
+  enabled: boolean;
+  expectedVersion: number;
+};
+
 export type AiUsageEventRecord = {
   id: string;
   userId: string | null;
@@ -100,6 +138,26 @@ async function requestBillingConfig<TResponse>(
 async function readAccessToken() {
   const session = await getCloudBaseAuthPort().getSession();
   return session?.accessToken || null;
+}
+
+export async function listAiModelPolicies(input?: {
+  toolKey?: string;
+  actionKey?: string;
+  providerKey?: string;
+  modelKey?: string;
+  enabled?: boolean;
+  limit?: number;
+  offset?: number;
+  sortBy?: string;
+  sortDirection?: string;
+}): Promise<BillingPage<AiModelPolicyRecord>> {
+  return requestBillingConfig("listAiModelPolicies", input);
+}
+
+export async function updateModelPolicy(
+  command: UpdateModelPolicyCommand,
+): Promise<AiModelPolicyRecord> {
+  return requestBillingConfig("updateModelPolicy", command);
 }
 
 export async function listCreditLedger(input?: {

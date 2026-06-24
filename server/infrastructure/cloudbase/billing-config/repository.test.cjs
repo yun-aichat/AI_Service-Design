@@ -237,6 +237,79 @@ test("upsertRecord overwrites the same billing config id instead of duplicating 
   assert.equal(stores.ai_action_pricing.get("journey:proposal:standard").creditCost, 20);
 });
 
+test("saveRecordWithVersion creates and updates a model policy with optimistic concurrency", async () => {
+  const { repository, stores } = createRepository();
+
+  const created = await repository.saveRecordWithVersion(
+    "ai_model_policies",
+    "journey-map:proposal",
+    0,
+    {
+      id: "journey-map:proposal",
+      policyId: "journey-map:proposal",
+      toolKey: "journey-map",
+      actionKey: "proposal",
+      providerKey: "glm",
+      modelKey: "glm-4.6",
+      apiKeyRef: "secrets/glm/default",
+      version: 1,
+    },
+  );
+  const staleCreate = await repository.saveRecordWithVersion(
+    "ai_model_policies",
+    "journey-map:proposal",
+    0,
+    {
+      id: "journey-map:proposal",
+      policyId: "journey-map:proposal",
+      toolKey: "journey-map",
+      actionKey: "proposal",
+      providerKey: "openai",
+      modelKey: "gpt-5-mini",
+      apiKeyRef: "secrets/openai/default",
+      version: 1,
+    },
+  );
+  const updated = await repository.saveRecordWithVersion(
+    "ai_model_policies",
+    "journey-map:proposal",
+    1,
+    {
+      id: "journey-map:proposal",
+      policyId: "journey-map:proposal",
+      toolKey: "journey-map",
+      actionKey: "proposal",
+      providerKey: "openai",
+      modelKey: "gpt-5-mini",
+      apiKeyRef: "secrets/openai/default",
+      version: 2,
+    },
+  );
+  const conflict = await repository.saveRecordWithVersion(
+    "ai_model_policies",
+    "journey-map:proposal",
+    1,
+    {
+      id: "journey-map:proposal",
+      policyId: "journey-map:proposal",
+      toolKey: "journey-map",
+      actionKey: "proposal",
+      providerKey: "openai",
+      modelKey: "gpt-5",
+      apiKeyRef: "secrets/openai/default",
+      version: 3,
+    },
+  );
+
+  assert.equal(created, true);
+  assert.equal(staleCreate, false);
+  assert.equal(updated, true);
+  assert.equal(conflict, false);
+  assert.equal(stores.ai_model_policies.size, 1);
+  assert.equal(stores.ai_model_policies.get("journey-map:proposal").modelKey, "gpt-5-mini");
+  assert.equal(stores.ai_model_policies.get("journey-map:proposal").version, 2);
+});
+
 function createRepository(seed = {}, options = {}) {
   const database = createFakeDatabase(seed, options);
   return {
@@ -301,6 +374,19 @@ function createFakeCollection(store, queryLog) {
           return { id };
         },
       };
+    },
+    async add(record) {
+      const id = record?._id;
+      if (!id) throw new Error("_id is required.");
+      if (store.has(id)) {
+        const error = new Error(`Duplicate key ${id}`);
+        error.code = "duplicate";
+        throw error;
+      }
+      const next = cloneJson(record);
+      delete next._id;
+      store.set(id, next);
+      return { id };
     },
     where(query) {
       queryLog.push({ type: "where", query: cloneJson(query) });
@@ -369,6 +455,16 @@ function createFakeQuery(store, queryLog, query = {}, state = {}) {
     async count() {
       queryLog.push({ type: "count" });
       return { total: applyFakeQuery([...store.values()], nextState.query).length };
+    },
+    async update(nextRecord) {
+      queryLog.push({ type: "update", record: cloneJson(nextRecord) });
+      const matches = applyFakeQuery([...store.entries()].map(([id, value]) => ({ _key: id, ...value })), nextState.query);
+      if (matches.length !== 1) return { updated: 0 };
+      const match = matches[0];
+      const record = cloneJson(nextRecord);
+      delete record._key;
+      store.set(match._key, record);
+      return { updated: 1 };
     },
   };
 }
