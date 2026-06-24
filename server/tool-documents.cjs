@@ -5,8 +5,12 @@ const {
 const {
   CloudBaseToolDocumentRepository,
 } = require("./infrastructure/cloudbase/tool-documents/repository.cjs");
+const {
+  createPersonaService,
+} = require("./application/persona/service.cjs");
 
 let cachedService = null;
+let cachedPersonaService = null;
 
 async function handleToolDocuments(request) {
   const user = await authenticateRequest(request);
@@ -29,6 +33,12 @@ async function handleToolDocuments(request) {
       return service.readDocument({
         user,
         documentId: body.documentId,
+      });
+    case "readPersonaDocument":
+      return getPersonaService().readPersonaDocument({
+        userId: user.id,
+        projectId: body.projectId,
+        personaId: body.personaId,
       });
     case "saveJourneyMap":
       return service.saveJourneyMap({
@@ -53,6 +63,15 @@ async function handleToolDocuments(request) {
         404,
       );
   }
+}
+
+function getPersonaService() {
+  if (cachedPersonaService) return cachedPersonaService;
+
+  cachedPersonaService = createPersonaService({
+    toolDocumentService: getToolDocumentService(),
+  });
+  return cachedPersonaService;
 }
 
 function getToolDocumentService() {
@@ -154,6 +173,7 @@ function sendJson(response, status, body) {
 }
 
 module.exports = {
+  getPersonaService,
   getToolDocumentService,
   handleToolDocuments,
   nodeHandler,

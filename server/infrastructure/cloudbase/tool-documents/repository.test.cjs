@@ -170,3 +170,41 @@ function createFakeCollection(store) {
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
+test("persona documents round-trip through getDocument and findDocumentByProjectAndTool", async () => {
+  const { repository } = createRepository();
+  const record = {
+    id: "persona-1",
+    projectId: "project-1",
+    ownerId: "user-1",
+    toolId: "persona",
+    schemaVersion: 1,
+    revision: 0,
+    title: "Persona 1",
+    content: {
+      id: "persona-1",
+      skeleton: { id: "persona-1", segmentName: "", summary: "", seedInsightIds: [] },
+      profile: { name: "李敏", roleTags: [] },
+      evidenceItems: [],
+      behaviorInsights: [],
+      contextInsights: [],
+      traits: {},
+      summaryItems: [],
+      meta: { updatedAt: "2026-06-24T00:00:00.000Z" },
+    },
+    createdAt: "2026-06-24T00:00:00.000Z",
+    updatedAt: "2026-06-24T00:00:00.000Z",
+  };
+
+  await repository.createDocument(record);
+
+  const byId = await repository.getDocument("persona-1");
+  const byProject = await repository.findDocumentByProjectAndTool(
+    "project-1",
+    "persona",
+    "user-1",
+  );
+
+  assert.equal(byId.toolId, "persona");
+  assert.equal(byProject.id, "persona-1");
+  assert.equal(byProject.content.profile.name, "李敏");
+});
