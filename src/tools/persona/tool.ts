@@ -327,8 +327,16 @@ function validateMeta(
   path: string,
 ): PersonaDocument["meta"] {
   const candidate = requireRecord(input, path)
+  const version = requirePositiveInteger(candidate.version, `${path}.version`)
+
+  if (version !== PERSONA_DOCUMENT_VERSION) {
+    throw new Error(
+      `${path}.version must be ${PERSONA_DOCUMENT_VERSION}.`,
+    )
+  }
+
   return {
-    version: requirePositiveInteger(candidate.version, `${path}.version`),
+    version,
     createdAt: requireString(candidate.createdAt, `${path}.createdAt`),
     updatedAt: requireString(candidate.updatedAt, `${path}.updatedAt`),
   }
@@ -466,7 +474,7 @@ export const personaToolDefinition: ToolDefinition<
   validateDocument(input: unknown) {
     return validatePersonaDocument(input)
   },
-  applyCommand(_document: Readonly<PersonaDocument>, command: PersonaCommand) {
+  applyCommand(document: Readonly<PersonaDocument>, command: PersonaCommand) {
     if (command.type !== "persona.replace-document") {
       throw new ToolRuntimeError(
         "INVALID_DEFINITION",
@@ -474,7 +482,36 @@ export const personaToolDefinition: ToolDefinition<
       )
     }
 
-    return validatePersonaDocument(command.payload.document)
+    const nextDocument = validatePersonaDocument({
+      ...requireRecord(command.payload.document, "command.payload.document"),
+      id: document.id,
+      skeleton: {
+        ...requireRecord(
+          requireRecord(command.payload.document, "command.payload.document").skeleton,
+          "command.payload.document.skeleton",
+        ),
+        id: document.skeleton.id,
+      },
+      meta: {
+        version: PERSONA_DOCUMENT_VERSION,
+        createdAt: document.meta.createdAt,
+        updatedAt: command.issuedAt,
+      },
+    })
+
+    return {
+      ...nextDocument,
+      id: document.id,
+      skeleton: {
+        ...nextDocument.skeleton,
+        id: document.skeleton.id,
+      },
+      meta: {
+        version: PERSONA_DOCUMENT_VERSION,
+        createdAt: document.meta.createdAt,
+        updatedAt: command.issuedAt,
+      },
+    }
   },
   migrations: [],
   exports: [],
