@@ -20,6 +20,50 @@ const reader = { id: "user-reader", roles: ["member"] };
 const admin = { id: "user-admin", roles: ["admin"] };
 const billingAdmin = { id: "user-billing-admin", roles: ["billing-admin"] };
 
+function buildModelPolicyTimestamp(index) {
+  return new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString();
+}
+
+function buildModelPolicyRecord(index, overrides = {}) {
+  const toolKey = overrides.toolKey ?? `tool-${index}`;
+  const actionKey = overrides.actionKey ?? `action-${index}`;
+  const policyId = overrides.policyId ?? `${toolKey}:${actionKey}`;
+  const providerKey = overrides.providerKey ?? "openai";
+  const modelKey = overrides.modelKey ?? `model-${index}`;
+  const timestamp = overrides.updatedAt ?? buildModelPolicyTimestamp(index);
+  return {
+    id: policyId,
+    policyId,
+    toolKey,
+    actionKey,
+    providerKey,
+    modelKey,
+    provider: providerKey,
+    model: modelKey,
+    endpoint: null,
+    apiKeyRef: `secrets/${toolKey}/${actionKey}`,
+    temperature: 0.1,
+    maxInputTokens: 8000,
+    maxOutputTokens: 2000,
+    timeoutMs: 30000,
+    enabled: true,
+    version: 1,
+    createdAt: timestamp,
+    createdBy: "seed-admin",
+    updatedAt: timestamp,
+    updatedBy: "seed-admin",
+    ...overrides,
+  };
+}
+
+function buildFormalModelPolicySeed(count, overridesByIndex = {}) {
+  const entries = Array.from({ length: count }, (_, index) => {
+    const record = buildModelPolicyRecord(index, overridesByIndex[index] || {});
+    return [record.id, record];
+  });
+  return Object.fromEntries(entries);
+}
+
 test("listCreditPackages paginates and filters package records", async () => {
   const { service } = createHarness({
     creditPackages: {
@@ -455,6 +499,105 @@ test("listAiModelPolicies collapses legacy and formal keys to one formal policy"
   assert.equal(page.items[0].modelKey, "gpt-5-mini");
 });
 
+test("listAiModelPolicies paginates correctly beyond 200 formal policies", async () => {
+  const { service } = createHarness({
+    aiModelPolicies: buildFormalModelPolicySeed(201),
+  });
+
+  const page = await service.listAiModelPolicies({
+    user: admin,
+    limit: 50,
+    offset: 200,
+  });
+
+  assert.equal(page.page.total, 201);
+  assert.equal(page.page.offset, 200);
+  assert.equal(page.page.hasMore, false);
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].policyId, "tool-0:action-0");
+});
+
+test("listAiModelPolicies finds post-collapse filters beyond the old 200-record boundary", async () => {
+  const { service } = createHarness({
+    aiModelPolicies: buildFormalModelPolicySeed(201, {
+      0: {
+        providerKey: "target-provider",
+        provider: "target-provider",
+      },
+    }),
+  });
+
+  const byPolicyId = await service.listAiModelPolicies({
+    user: admin,
+    policyId: "tool-0:action-0",
+  });
+  assert.equal(byPolicyId.page.total, 1);
+  assert.equal(byPolicyId.items.length, 1);
+  assert.equal(byPolicyId.items[0].policyId, "tool-0:action-0");
+
+  const byProvider = await service.listAiModelPolicies({
+    user: admin,
+    providerKey: "target-provider",
+  });
+  assert.equal(byProvider.page.total, 1);
+  assert.equal(byProvider.items.length, 1);
+  assert.equal(byProvider.items[0].providerKey, "target-provider");
+  assert.equal(byProvider.items[0].policyId, "tool-0:action-0");
+});
+
+test("listAiModelPolicies paginates canonical results when legacy and formal records coexist", async () => {
+  const formalSeed = buildFormalModelPolicySeed(200);
+  const duplicateFormal = buildModelPolicyRecord(200, {
+    toolKey: "journey-map",
+    actionKey: "proposal",
+    policyId: "journey-map:proposal",
+    id: "journey-map:proposal",
+    providerKey: "openai",
+    provider: "openai",
+    modelKey: "gpt-5-mini",
+    model: "gpt-5-mini",
+    createdAt: "2025-12-31T23:59:58.000Z",
+    updatedAt: "2025-12-31T23:59:58.000Z",
+  });
+
+  const { service } = createHarness({
+    aiModelPolicies: {
+      ...formalSeed,
+      "journey-map:proposal:standard": {
+        id: "journey-map:proposal:standard",
+        policyId: "journey-map:proposal:standard",
+        toolKey: "journey-map",
+        actionKey: "proposal",
+        tierKey: "standard",
+        provider: "glm",
+        model: "glm-4.5",
+        endpoint: null,
+        apiKeyRef: "secrets/glm/legacy",
+        temperature: 0.3,
+        maxInputTokens: 6000,
+        maxOutputTokens: 1500,
+        timeoutMs: 25000,
+        enabled: true,
+        version: 2,
+        createdAt: "2025-12-31T23:59:57.000Z",
+        updatedAt: "2025-12-31T23:59:57.000Z",
+      },
+      [duplicateFormal.id]: duplicateFormal,
+    },
+  });
+
+  const page = await service.listAiModelPolicies({
+    user: admin,
+    limit: 10,
+    offset: 200,
+  });
+
+  assert.equal(page.page.total, 201);
+  assert.equal(page.page.hasMore, false);
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].policyId, "journey-map:proposal");
+  assert.equal(page.items[0].providerKey, "openai");
+});
 test("listCreditLedger and listAiUsageEvents require admin access", async () => {
   const { service } = createHarness({
     creditLedger: {

@@ -164,16 +164,15 @@ function createBillingConfigService({
     const offset = requireOffset(input.offset);
     const sortBy = requireSortKey(optionalString(input.sortBy) || "updatedAt");
     const sortDirection = requireSortDirection(optionalString(input.sortDirection) || "desc");
-    const result = await repository.listRecords(COLLECTIONS.aiModelPolicies, {
+    const records = await loadAllAiModelPolicyRecords({
+      repository,
       filters: pickDefinedFilters(input, ["toolKey", "actionKey", "enabled"]),
       sortBy,
       sortDirection,
-      limit: 200,
-      offset: 0,
       createdFrom: input.createdFrom,
       createdTo: input.createdTo,
     });
-    const collapsed = collapseAiModelPolicies(result.items).filter((record) =>
+    const collapsed = collapseAiModelPolicies(records).filter((record) =>
       matchesAiModelPolicyFilter(record, input),
     );
     const items = collapsed.slice(offset, offset + limit);
@@ -536,14 +535,67 @@ function normalizeAiModelPolicyRecord(record) {
 }
 
 async function loadAiModelPolicyCandidates({ repository, toolKey, actionKey }) {
-  const result = await repository.listRecords(COLLECTIONS.aiModelPolicies, {
+  return loadAllAiModelPolicyRecords({
+    repository,
     filters: pickDefinedFilters({ toolKey, actionKey }, ["toolKey", "actionKey"]),
     sortBy: "updatedAt",
     sortDirection: "desc",
-    limit: 200,
-    offset: 0,
   });
-  return Array.isArray(result?.items) ? result.items : [];
+}
+
+async function loadAllAiModelPolicyRecords({
+  repository,
+  filters,
+  sortBy,
+  sortDirection,
+  createdFrom,
+  createdTo,
+}) {
+  return listAllRecords({
+    repository,
+    collectionName: COLLECTIONS.aiModelPolicies,
+    filters,
+    sortBy,
+    sortDirection,
+    createdFrom,
+    createdTo,
+    batchSize: 200,
+  });
+}
+
+async function listAllRecords({
+  repository,
+  collectionName,
+  filters,
+  sortBy,
+  sortDirection,
+  createdFrom,
+  createdTo,
+  batchSize,
+}) {
+  const items = [];
+  let offset = 0;
+  const limit = requirePageSize(batchSize);
+
+  while (true) {
+    const page = await repository.listRecords(collectionName, {
+      filters,
+      sortBy,
+      sortDirection,
+      limit,
+      offset,
+      createdFrom,
+      createdTo,
+    });
+    const pageItems = Array.isArray(page?.items) ? page.items : [];
+    if (pageItems.length === 0) break;
+    items.push(...pageItems);
+    const total = Number(page?.total ?? items.length);
+    offset += pageItems.length;
+    if (offset >= total) break;
+  }
+
+  return items;
 }
 
 function collapseAiModelPolicies(records) {
