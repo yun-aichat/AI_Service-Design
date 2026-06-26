@@ -80,7 +80,6 @@ function createToolDocumentAssistantUsageRecorder({
               model,
               toolKey: usageKeys.toolKey,
               actionKey: usageKeys.actionKey,
-              tierKey: usageKeys.tierKey,
               inputTokens,
               outputTokens,
               totalTokens,
@@ -101,7 +100,7 @@ function createToolDocumentAssistantUsageRecorder({
             user: { id: "system" },
             toolKey: usageKeys.toolKey,
             actionKey: usageKeys.actionKey,
-            tierKey: usageKeys.tierKey,
+
             enabled: true,
             limit: 1,
           });

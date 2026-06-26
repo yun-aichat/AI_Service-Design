@@ -57,6 +57,16 @@ class CloudBaseBillingConfigRepository {
     return record;
   }
 
+  async deleteRecord(collectionName, recordId) {
+    const collection = getCollection(this.collections, collectionName);
+    if (typeof collection.doc(recordId).remove === "function") {
+      const result = await collection.doc(recordId).remove();
+      return deleteCount(result) === 1 || deleteCount(result) === 0;
+    }
+    await collection.doc(recordId).set(null);
+    return true;
+  }
+
   async saveRecordWithVersion(collectionName, recordId, expectedVersion, record) {
     const collection = getCollection(this.collections, collectionName);
     if (expectedVersion === 0) {
@@ -191,6 +201,16 @@ function updateCount(result) {
       result?.modified ??
       result?.stats?.updated ??
       result?.stats?.modified ??
+      0,
+  );
+}
+
+function deleteCount(result) {
+  return Number(
+    result?.deleted ??
+      result?.removed ??
+      result?.stats?.removed ??
+      result?.stats?.deleted ??
       0,
   );
 }

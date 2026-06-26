@@ -339,6 +339,122 @@ test("updateModelPolicy rejects illegal fields and missing apiKeyRef-only contra
   );
 });
 
+test("updateModelPolicy migrates a legacy standard-tier record without leaving dual records", async () => {
+  const { service, repository } = createHarness({
+    aiModelPolicies: {
+      "journey-map:proposal:standard": {
+        id: "journey-map:proposal:standard",
+        policyId: "journey-map:proposal:standard",
+        toolKey: "journey-map",
+        actionKey: "proposal",
+        tierKey: "standard",
+        provider: "glm",
+        model: "glm-4.5",
+        endpoint: null,
+        apiKeyRef: "secrets/glm/legacy",
+        temperature: 0.3,
+        maxInputTokens: 6000,
+        maxOutputTokens: 1500,
+        timeoutMs: 25000,
+        enabled: true,
+        version: 2,
+        createdAt: "2026-06-13T00:00:00.000Z",
+        createdBy: "seed-admin",
+        updatedAt: "2026-06-13T00:00:00.000Z",
+        updatedBy: "seed-admin",
+      },
+    },
+  });
+
+  const updated = await service.updateModelPolicy({
+    user: admin,
+    command: {
+      toolKey: "journey-map",
+      actionKey: "proposal",
+      providerKey: "openai",
+      modelKey: "gpt-5-mini",
+      endpoint: "https://api.openai.com/v1",
+      apiKeyRef: "secrets/openai/default",
+      temperature: 0.1,
+      maxInputTokens: 12000,
+      maxOutputTokens: 4000,
+      timeoutMs: 45000,
+      enabled: true,
+      expectedVersion: 2,
+    },
+  });
+
+  assert.equal(updated.policyId, "journey-map:proposal");
+  assert.equal(updated.version, 3);
+  assert.equal(await repository.getRecord("ai_model_policies", "journey-map:proposal:standard"), null);
+
+  const page = await service.listAiModelPolicies({
+    user: admin,
+    toolKey: "journey-map",
+    actionKey: "proposal",
+  });
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].policyId, "journey-map:proposal");
+  assert.equal(page.items[0].providerKey, "openai");
+});
+
+test("listAiModelPolicies collapses legacy and formal keys to one formal policy", async () => {
+  const { service } = createHarness({
+    aiModelPolicies: {
+      "journey-map:proposal:standard": {
+        id: "journey-map:proposal:standard",
+        policyId: "journey-map:proposal:standard",
+        toolKey: "journey-map",
+        actionKey: "proposal",
+        tierKey: "standard",
+        provider: "glm",
+        model: "glm-4.5",
+        endpoint: null,
+        apiKeyRef: "secrets/glm/legacy",
+        temperature: 0.3,
+        maxInputTokens: 6000,
+        maxOutputTokens: 1500,
+        timeoutMs: 25000,
+        enabled: true,
+        version: 2,
+        createdAt: "2026-06-13T00:00:00.000Z",
+        updatedAt: "2026-06-13T00:00:00.000Z",
+      },
+      "journey-map:proposal": {
+        id: "journey-map:proposal",
+        policyId: "journey-map:proposal",
+        toolKey: "journey-map",
+        actionKey: "proposal",
+        providerKey: "openai",
+        modelKey: "gpt-5-mini",
+        provider: "openai",
+        model: "gpt-5-mini",
+        endpoint: "https://api.openai.com/v1",
+        apiKeyRef: "secrets/openai/default",
+        temperature: 0.1,
+        maxInputTokens: 12000,
+        maxOutputTokens: 4000,
+        timeoutMs: 45000,
+        enabled: true,
+        version: 3,
+        createdAt: "2026-06-14T00:00:00.000Z",
+        updatedAt: "2026-06-14T00:00:00.000Z",
+      },
+    },
+  });
+
+  const page = await service.listAiModelPolicies({
+    user: admin,
+    toolKey: "journey-map",
+    actionKey: "proposal",
+  });
+
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].policyId, "journey-map:proposal");
+  assert.equal(page.items[0].providerKey, "openai");
+  assert.equal(page.items[0].modelKey, "gpt-5-mini");
+});
+
 test("listCreditLedger and listAiUsageEvents require admin access", async () => {
   const { service } = createHarness({
     creditLedger: {

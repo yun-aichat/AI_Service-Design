@@ -93,6 +93,11 @@ class InMemoryBillingConfigRepository {
     return cloneJson(record);
   }
 
+  async deleteRecord(collectionName, recordId) {
+    const collection = requireCollection(this.collections, collectionName);
+    return collection.delete(recordId);
+  }
+
   async saveRecordWithVersion(collectionName, recordId, expectedVersion, record) {
     const collection = requireCollection(this.collections, collectionName);
     const current = collection.get(recordId);
@@ -155,30 +160,32 @@ function createBillingConfigService({
 
   async function listAiModelPolicies(input = {}) {
     assertAuthenticatedUser(input.user);
-    const page = await listCollection({
-      collectionName: COLLECTIONS.aiModelPolicies,
-      filters: pickDefinedFilters(
-        {
-          policyId: input.policyId,
-          toolKey: input.toolKey,
-          actionKey: input.actionKey,
-          providerKey: input.providerKey ?? input.provider,
-          modelKey: input.modelKey ?? input.model,
-          enabled: input.enabled,
-        },
-        ["policyId", "toolKey", "actionKey", "providerKey", "modelKey", "enabled"],
-      ),
-      sortBy: optionalString(input.sortBy) || "updatedAt",
-      sortDirection: optionalString(input.sortDirection) || "desc",
-      limit: input.limit,
-      offset: input.offset,
+    const limit = requirePageSize(input.limit);
+    const offset = requireOffset(input.offset);
+    const sortBy = requireSortKey(optionalString(input.sortBy) || "updatedAt");
+    const sortDirection = requireSortDirection(optionalString(input.sortDirection) || "desc");
+    const result = await repository.listRecords(COLLECTIONS.aiModelPolicies, {
+      filters: pickDefinedFilters(input, ["toolKey", "actionKey", "enabled"]),
+      sortBy,
+      sortDirection,
+      limit: 200,
+      offset: 0,
       createdFrom: input.createdFrom,
       createdTo: input.createdTo,
     });
+    const collapsed = collapseAiModelPolicies(result.items).filter((record) =>
+      matchesAiModelPolicyFilter(record, input),
+    );
+    const items = collapsed.slice(offset, offset + limit);
 
     return {
-      ...page,
-      items: page.items.map((record) => normalizeAiModelPolicyRecord(record)),
+      items,
+      page: {
+        limit,
+        offset,
+        total: collapsed.length,
+        hasMore: offset + items.length < collapsed.length,
+      },
     };
   }
 
@@ -273,24 +280,31 @@ function createBillingConfigService({
     const user = assertAdminUser(input.user);
     const command = validateModelPolicyCommand(input.command || {});
     const policyId = command.policyId;
-    const existing = await repository.getRecord(COLLECTIONS.aiModelPolicies, policyId);
-    const currentVersion = existing ? requireStoredVersion(existing.version) : 0;
+    const candidates = await loadAiModelPolicyCandidates({
+      repository,
+      toolKey: command.toolKey,
+      actionKey: command.actionKey,
+    });
+    const formalRecord = candidates.find((record) => isFormalAiModelPolicyRecord(record));
+    const legacyRecords = candidates.filter((record) => !isFormalAiModelPolicyRecord(record));
+    const migrationSource = formalRecord || pickPreferredAiModelPolicyRecord(legacyRecords);
+    const currentVersion = migrationSource ? requireStoredVersion(migrationSource.version) : 0;
     if (currentVersion !== command.expectedVersion) {
       throw new BillingConfigError(
         "VERSION_CONFLICT",
-        `Model policy version conflict for \"${policyId}\". Expected ${command.expectedVersion}, found ${currentVersion}.`,
+        `Model policy version conflict for "${policyId}". Expected ${command.expectedVersion}, found ${currentVersion}.`,
         409,
       );
     }
 
     const timestamp = now();
     const nextRecord = normalizeAiModelPolicyRecord({
-      ...existing,
+      ...migrationSource,
       ...command,
       id: policyId,
       policyId,
-      createdAt: existing?.createdAt || timestamp,
-      createdBy: existing?.createdBy || user.id,
+      createdAt: migrationSource?.createdAt || timestamp,
+      createdBy: migrationSource?.createdBy || user.id,
       updatedAt: timestamp,
       updatedBy: user.id,
       version: currentVersion + 1,
@@ -300,7 +314,7 @@ function createBillingConfigService({
       ? await repository.saveRecordWithVersion(
           COLLECTIONS.aiModelPolicies,
           policyId,
-          command.expectedVersion,
+          formalRecord ? command.expectedVersion : 0,
           nextRecord,
         )
       : (await repository.upsertRecord(COLLECTIONS.aiModelPolicies, policyId, nextRecord), true);
@@ -308,11 +322,12 @@ function createBillingConfigService({
     if (!saved) {
       throw new BillingConfigError(
         "VERSION_CONFLICT",
-        `Model policy version conflict for \"${policyId}\".`,
+        `Model policy version conflict for "${policyId}".`,
         409,
       );
     }
 
+    await deleteLegacyAiModelPolicies(repository, legacyRecords);
     return nextRecord;
   }
 
@@ -502,13 +517,15 @@ function normalizeAiModelPolicyRecord(record) {
   if (!record || typeof record !== "object") return record;
   const providerKey = safeOptionalString(record.providerKey) || safeOptionalString(record.provider);
   const modelKey = safeOptionalString(record.modelKey) || safeOptionalString(record.model);
+  const policyId =
+    safeOptionalString(record.policyId) ||
+    (safeOptionalString(record.toolKey) && safeOptionalString(record.actionKey)
+      ? buildModelPolicyId(record.toolKey, record.actionKey)
+      : null);
   return {
     ...cloneJson(record),
-    policyId:
-      safeOptionalString(record.policyId) ||
-      (safeOptionalString(record.toolKey) && safeOptionalString(record.actionKey)
-        ? buildModelPolicyId(record.toolKey, record.actionKey)
-        : null),
+    id: policyId || safeOptionalString(record.id) || null,
+    policyId,
     providerKey,
     modelKey,
     provider: providerKey,
@@ -516,6 +533,90 @@ function normalizeAiModelPolicyRecord(record) {
     endpoint: safeOptionalString(record.endpoint),
     apiKeyRef: safeOptionalString(record.apiKeyRef),
   };
+}
+
+async function loadAiModelPolicyCandidates({ repository, toolKey, actionKey }) {
+  const result = await repository.listRecords(COLLECTIONS.aiModelPolicies, {
+    filters: pickDefinedFilters({ toolKey, actionKey }, ["toolKey", "actionKey"]),
+    sortBy: "updatedAt",
+    sortDirection: "desc",
+    limit: 200,
+    offset: 0,
+  });
+  return Array.isArray(result?.items) ? result.items : [];
+}
+
+function collapseAiModelPolicies(records) {
+  const grouped = new Map();
+  for (const record of records || []) {
+    const canonicalId = deriveAiModelPolicyId(record);
+    if (!canonicalId) continue;
+    const current = grouped.get(canonicalId);
+    if (!current || shouldPreferAiModelPolicyRecord(record, current)) {
+      grouped.set(canonicalId, record);
+    }
+  }
+  return [...grouped.values()].map((record) => normalizeAiModelPolicyRecord(record));
+}
+
+function shouldPreferAiModelPolicyRecord(candidate, current) {
+  if (isFormalAiModelPolicyRecord(candidate)) return !isFormalAiModelPolicyRecord(current);
+  if (isFormalAiModelPolicyRecord(current)) return false;
+  if (isStandardLegacyAiModelPolicyRecord(candidate)) {
+    return !isStandardLegacyAiModelPolicyRecord(current);
+  }
+  return false;
+}
+
+function pickPreferredAiModelPolicyRecord(records) {
+  if (!Array.isArray(records) || records.length === 0) return null;
+  return records.reduce(
+    (selected, candidate) => (!selected || shouldPreferAiModelPolicyRecord(candidate, selected) ? candidate : selected),
+    null,
+  );
+}
+
+async function deleteLegacyAiModelPolicies(repository, records) {
+  if (!repository?.deleteRecord || !Array.isArray(records) || records.length === 0) return;
+  for (const record of records) {
+    const recordId = safeOptionalString(record?.id) || safeOptionalString(record?.policyId);
+    if (recordId) {
+      await repository.deleteRecord(COLLECTIONS.aiModelPolicies, recordId);
+    }
+  }
+}
+
+function matchesAiModelPolicyFilter(record, input) {
+  if (input.policyId && record.policyId !== input.policyId) return false;
+  if (input.toolKey && record.toolKey !== input.toolKey) return false;
+  if (input.actionKey && record.actionKey !== input.actionKey) return false;
+  const providerKey = input.providerKey ?? input.provider;
+  if (providerKey && record.providerKey !== providerKey) return false;
+  const modelKey = input.modelKey ?? input.model;
+  if (modelKey && record.modelKey !== modelKey) return false;
+  if (input.enabled !== undefined && input.enabled !== null && record.enabled !== input.enabled) {
+    return false;
+  }
+  return true;
+}
+
+function deriveAiModelPolicyId(record) {
+  const toolKey = safeOptionalString(record?.toolKey);
+  const actionKey = safeOptionalString(record?.actionKey);
+  if (!toolKey || !actionKey) return null;
+  return buildModelPolicyId(toolKey, actionKey);
+}
+
+function isFormalAiModelPolicyRecord(record) {
+  const canonicalId = deriveAiModelPolicyId(record);
+  const recordId = safeOptionalString(record?.id) || safeOptionalString(record?.policyId);
+  return Boolean(canonicalId && recordId === canonicalId);
+}
+
+function isStandardLegacyAiModelPolicyRecord(record) {
+  const canonicalId = deriveAiModelPolicyId(record);
+  const recordId = safeOptionalString(record?.id) || safeOptionalString(record?.policyId);
+  return Boolean(canonicalId && recordId === `${canonicalId}:standard`);
 }
 
 function buildModelPolicyId(toolKey, actionKey) {

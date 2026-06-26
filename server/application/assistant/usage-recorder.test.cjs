@@ -208,6 +208,66 @@ test("assistant usage recorder derives billing usage keys from the real journey 
   assert.equal(result.items[0].provider, "openai");
 });
 
+test("assistant usage recorder prefers the formal model policy when legacy and formal keys coexist", async () => {
+  const { recorder, billingConfigService } = createTestRecorder({
+    seed: {
+      aiModelPolicies: {
+        "journey-map:proposal:standard": {
+          id: "journey-map:proposal:standard",
+          policyId: "journey-map:proposal:standard",
+          toolKey: "journey-map",
+          actionKey: "proposal",
+          tierKey: "standard",
+          provider: "glm",
+          model: "glm-4.5",
+          temperature: 0.4,
+          maxInputTokens: 8000,
+          maxOutputTokens: 2000,
+          timeoutMs: 30000,
+          enabled: true,
+          createdAt: "2026-06-16T00:00:00.000Z",
+          updatedAt: "2026-06-16T00:00:00.000Z",
+        },
+        "journey-map:proposal": {
+          id: "journey-map:proposal",
+          policyId: "journey-map:proposal",
+          toolKey: "journey-map",
+          actionKey: "proposal",
+          providerKey: "openai",
+          modelKey: "gpt-5-mini",
+          provider: "openai",
+          model: "gpt-5-mini",
+          endpoint: "https://api.openai.com/v1",
+          apiKeyRef: "secrets/openai/default",
+          temperature: 0.1,
+          maxInputTokens: 12000,
+          maxOutputTokens: 4000,
+          timeoutMs: 45000,
+          enabled: true,
+          version: 3,
+          createdAt: "2026-06-17T00:00:00.000Z",
+          updatedAt: "2026-06-17T00:00:00.000Z",
+        },
+      },
+    },
+  });
+
+  await recorder.recordGenerated({
+    request: baseRequest,
+    response: { phase: "proposal" },
+    user: regularUser,
+    model: "gpt-5-mini",
+    usage: { inputTokens: 150, outputTokens: 30 },
+    chargedCredits: 15,
+    runId: "run-prefer-formal",
+  });
+
+  const result = await billingConfigService.listAiUsageEvents({ user: adminUser });
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].provider, "openai");
+  assert.equal(result.items[0].referenceId, "run-prefer-formal");
+});
+
 test("assistant usage recorder marks failed generations without blocking tool usage writes", async () => {
   const { recorder, billingConfigService, tracker } = createTestRecorder();
 
