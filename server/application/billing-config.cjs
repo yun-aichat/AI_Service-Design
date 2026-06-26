@@ -79,15 +79,18 @@ class InMemoryBillingConfigRepository {
     return cloneJson(record);
   }
 
-  async findActionPricingRecord(toolKey, actionKey) {
+  async findActionPricingRecord(toolKey, actionKey, tierKey) {
     const collection = requireCollection(this.collections, COLLECTIONS.aiActionPricing);
     const matches = [...collection.values()].filter(
-      (record) => record?.toolKey === toolKey && record?.actionKey === actionKey,
+      (record) =>
+        record?.toolKey === toolKey &&
+        record?.actionKey === actionKey &&
+        record?.tierKey === tierKey,
     );
     if (matches.length > 1) {
       throw new BillingConfigError(
         "ACTION_PRICING_AMBIGUOUS",
-        `Multiple action pricing records matched toolKey/actionKey "${toolKey}/${actionKey}".`,
+        `Multiple action pricing records matched toolKey/actionKey/tierKey "${toolKey}/${actionKey}/${tierKey}".`,
         409,
       );
     }
@@ -266,7 +269,7 @@ function createBillingConfigService({
     const command = validateUpdateActionPricingCommand(input.command || {});
     let existing;
     try {
-      existing = await repository.findActionPricingRecord(command.toolKey, command.actionKey);
+      existing = await repository.findActionPricingRecord(command.toolKey, command.actionKey, command.tierKey);
     } catch (error) {
       if (error instanceof BillingConfigError) {
         throw error;
@@ -281,7 +284,7 @@ function createBillingConfigService({
     if (!existing) {
       throw new BillingConfigError(
         "ACTION_PRICING_NOT_FOUND",
-        `Action pricing was not found for ${command.toolKey}/${command.actionKey}.`,
+        `Action pricing was not found for ${command.toolKey}/${command.actionKey}/${command.tierKey}.`,
         404,
       );
     }
@@ -303,6 +306,7 @@ function createBillingConfigService({
       pricingId: recordId,
       toolKey: existing.toolKey,
       actionKey: existing.actionKey,
+      tierKey: existing.tierKey,
       creditCost: command.creditCost,
       enabled: command.enabled,
       createdAt: existing.createdAt || timestamp,
@@ -481,6 +485,7 @@ function validateUpdateActionPricingCommand(command) {
   return {
     toolKey: requireString(command.toolKey, "command.toolKey"),
     actionKey: requireString(command.actionKey, "command.actionKey"),
+    tierKey: requireString(command.tierKey, "command.tierKey"),
     creditCost: requireNonNegativeInteger(command.creditCost, "command.creditCost"),
     enabled: requireBoolean(command.enabled, "command.enabled"),
     expectedVersion: requireNonNegativeInteger(

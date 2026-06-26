@@ -32,7 +32,7 @@ export type AiActionPricingRecord = {
   pricingId: string;
   toolKey: string;
   actionKey: string;
-  tierKey: string | null;
+  tierKey: string;
   displayName: string;
   description: string | null;
   creditCost: number;
@@ -45,6 +45,7 @@ export type AiActionPricingRecord = {
 export type UpdateActionPricingCommand = {
   toolKey: string;
   actionKey: string;
+  tierKey: string;
   creditCost: number;
   enabled: boolean;
   expectedVersion: number;

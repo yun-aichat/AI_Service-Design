@@ -6,6 +6,9 @@ const {
   InMemoryBillingConfigRepository,
   createBillingConfigService,
 } = require("./billing-config.cjs");
+const {
+  CloudBaseBillingConfigRepository,
+} = require("../infrastructure/cloudbase/billing-config/repository.cjs");
 
 function createHarness(seed) {
   const repository = new InMemoryBillingConfigRepository(seed);
@@ -310,6 +313,7 @@ test("updateActionPricing requires billing admin roles", async () => {
         command: {
           toolKey: "journey-map",
           actionKey: "skeleton_generate",
+          tierKey: "standard",
           creditCost: 8,
           enabled: false,
           expectedVersion: 2,
@@ -347,6 +351,7 @@ test("updateActionPricing rejects negative credit cost", async () => {
         command: {
           toolKey: "journey-map",
           actionKey: "skeleton_generate",
+          tierKey: "standard",
           creditCost: -1,
           enabled: true,
           expectedVersion: 2,
@@ -356,7 +361,7 @@ test("updateActionPricing rejects negative credit cost", async () => {
   );
 });
 
-test("updateActionPricing updates creditCost and enabled by toolKey/actionKey, preserves metadata, and bumps version", async () => {
+test("updateActionPricing updates only the requested tier and preserves other tiers", async () => {
   const { service, repository } = createHarness({
     aiActionPricing: {
       "journey-map:skeleton_generate:standard": {
@@ -376,6 +381,23 @@ test("updateActionPricing updates creditCost and enabled by toolKey/actionKey, p
         updatedAt: "2026-06-13T00:00:00.000Z",
         updatedBy: "seed-admin",
       },
+      "journey-map:skeleton_generate:deep": {
+        id: "journey-map:skeleton_generate:deep",
+        pricingId: "journey-map:skeleton_generate:deep",
+        toolKey: "journey-map",
+        actionKey: "skeleton_generate",
+        tierKey: "deep",
+        displayName: "Journey Skeleton Deep",
+        description: "deep seed description",
+        creditCost: 12,
+        enabled: true,
+        metadata: { lockedBy: "seed-deep" },
+        version: 4,
+        createdAt: "2026-06-12T00:00:00.000Z",
+        createdBy: "seed-admin",
+        updatedAt: "2026-06-12T00:00:00.000Z",
+        updatedBy: "seed-admin",
+      },
     },
   });
 
@@ -384,6 +406,7 @@ test("updateActionPricing updates creditCost and enabled by toolKey/actionKey, p
     command: {
       toolKey: "journey-map",
       actionKey: "skeleton_generate",
+      tierKey: "standard",
       creditCost: 8,
       enabled: false,
       expectedVersion: 2,
@@ -393,6 +416,7 @@ test("updateActionPricing updates creditCost and enabled by toolKey/actionKey, p
   assert.equal(record.creditCost, 8);
   assert.equal(record.enabled, false);
   assert.equal(record.version, 3);
+  assert.equal(record.tierKey, "standard");
   assert.equal(record.displayName, "Journey Skeleton");
   assert.equal(record.description, "seed description");
   assert.deepEqual(record.metadata, { lockedBy: "seed" });
@@ -406,6 +430,84 @@ test("updateActionPricing updates creditCost and enabled by toolKey/actionKey, p
   assert.equal(stored.creditCost, 8);
   assert.equal(stored.enabled, false);
   assert.equal(stored.version, 3);
+
+  const untouched = await repository.getRecord(
+    "ai_action_pricing",
+    "journey-map:skeleton_generate:deep",
+  );
+  assert.equal(untouched.creditCost, 12);
+  assert.equal(untouched.enabled, true);
+  assert.equal(untouched.version, 4);
+});
+
+test("updateActionPricing can precisely update one tier when the same action has standard and deep pricing", async () => {
+  const { service, repository } = createHarness({
+    aiActionPricing: {
+      "journey-map:persona_run:standard": {
+        id: "journey-map:persona_run:standard",
+        pricingId: "journey-map:persona_run:standard",
+        toolKey: "journey-map",
+        actionKey: "persona_run",
+        tierKey: "standard",
+        displayName: "Persona Run Standard",
+        creditCost: 10,
+        enabled: true,
+        version: 1,
+        createdAt: "2026-06-13T00:00:00.000Z",
+        createdBy: "seed-admin",
+        updatedAt: "2026-06-13T00:00:00.000Z",
+        updatedBy: "seed-admin",
+      },
+      "journey-map:persona_run:deep": {
+        id: "journey-map:persona_run:deep",
+        pricingId: "journey-map:persona_run:deep",
+        toolKey: "journey-map",
+        actionKey: "persona_run",
+        tierKey: "deep",
+        displayName: "Persona Run Deep",
+        creditCost: 20,
+        enabled: true,
+        version: 7,
+        createdAt: "2026-06-12T00:00:00.000Z",
+        createdBy: "seed-admin",
+        updatedAt: "2026-06-12T00:00:00.000Z",
+        updatedBy: "seed-admin",
+      },
+    },
+  });
+
+  const record = await service.updateActionPricing({
+    user: admin,
+    command: {
+      toolKey: "journey-map",
+      actionKey: "persona_run",
+      tierKey: "deep",
+      creditCost: 25,
+      enabled: false,
+      expectedVersion: 7,
+    },
+  });
+
+  assert.equal(record.pricingId, "journey-map:persona_run:deep");
+  assert.equal(record.tierKey, "deep");
+  assert.equal(record.creditCost, 25);
+  assert.equal(record.enabled, false);
+  assert.equal(record.version, 8);
+
+  const deepRecord = await repository.getRecord(
+    "ai_action_pricing",
+    "journey-map:persona_run:deep",
+  );
+  const standardRecord = await repository.getRecord(
+    "ai_action_pricing",
+    "journey-map:persona_run:standard",
+  );
+  assert.equal(deepRecord.creditCost, 25);
+  assert.equal(deepRecord.enabled, false);
+  assert.equal(deepRecord.version, 8);
+  assert.equal(standardRecord.creditCost, 10);
+  assert.equal(standardRecord.enabled, true);
+  assert.equal(standardRecord.version, 1);
 });
 
 test("updateActionPricing returns a version conflict when expectedVersion is stale", async () => {
@@ -436,6 +538,7 @@ test("updateActionPricing returns a version conflict when expectedVersion is sta
         command: {
           toolKey: "journey-map",
           actionKey: "skeleton_generate",
+          tierKey: "standard",
           creditCost: 8,
           enabled: false,
           expectedVersion: 1,
@@ -448,9 +551,26 @@ test("updateActionPricing returns a version conflict when expectedVersion is sta
   );
 });
 
-
-test("updateActionPricing returns not found when toolKey/actionKey has no pricing record", async () => {
-  const { service } = createHarness();
+test("updateActionPricing returns not found when the requested tier has no pricing record", async () => {
+  const { service } = createHarness({
+    aiActionPricing: {
+      "journey-map:skeleton_generate:standard": {
+        id: "journey-map:skeleton_generate:standard",
+        pricingId: "journey-map:skeleton_generate:standard",
+        toolKey: "journey-map",
+        actionKey: "skeleton_generate",
+        tierKey: "standard",
+        displayName: "Journey Skeleton",
+        creditCost: 5,
+        enabled: true,
+        version: 2,
+        createdAt: "2026-06-13T00:00:00.000Z",
+        createdBy: "seed-admin",
+        updatedAt: "2026-06-13T00:00:00.000Z",
+        updatedBy: "seed-admin",
+      },
+    },
+  });
 
   await assert.rejects(
     () =>
@@ -459,6 +579,7 @@ test("updateActionPricing returns not found when toolKey/actionKey has no pricin
         command: {
           toolKey: "journey-map",
           actionKey: "skeleton_generate",
+          tierKey: "deep",
           creditCost: 8,
           enabled: false,
           expectedVersion: 0,
@@ -470,3 +591,113 @@ test("updateActionPricing returns not found when toolKey/actionKey has no pricin
       error.status === 404,
   );
 });
+
+test("updateActionPricing returns ACTION_PRICING_AMBIGUOUS 409 for CloudBase duplicate matches on the same tier", async () => {
+  const repository = new CloudBaseBillingConfigRepository(
+    createCloudBaseDatabase({
+      ai_action_pricing: {
+        "pricing-1": {
+          id: "pricing-1",
+          pricingId: "journey-map:skeleton_generate:standard",
+          toolKey: "journey-map",
+          actionKey: "skeleton_generate",
+          tierKey: "standard",
+          displayName: "Journey Skeleton Standard",
+          creditCost: 5,
+          enabled: true,
+          version: 2,
+        },
+        "pricing-2": {
+          id: "pricing-2",
+          pricingId: "journey-map:skeleton_generate:standard:duplicate",
+          toolKey: "journey-map",
+          actionKey: "skeleton_generate",
+          tierKey: "standard",
+          displayName: "Journey Skeleton Standard Duplicate",
+          creditCost: 7,
+          enabled: true,
+          version: 3,
+        },
+      },
+    }),
+  );
+  const service = createBillingConfigService({
+    repository,
+    now: () => "2026-06-14T00:00:00.000Z",
+  });
+
+  await assert.rejects(
+    () =>
+      service.updateActionPricing({
+        user: admin,
+        command: {
+          toolKey: "journey-map",
+          actionKey: "skeleton_generate",
+          tierKey: "standard",
+          creditCost: 9,
+          enabled: false,
+          expectedVersion: 2,
+        },
+      }),
+    (error) =>
+      error instanceof BillingConfigError &&
+      error.code === "ACTION_PRICING_AMBIGUOUS" &&
+      error.status === 409,
+  );
+});
+
+function createCloudBaseDatabase(seed = {}) {
+  const stores = {
+    credit_packages: new Map(),
+    ai_action_pricing: new Map(
+      Object.entries(seed.ai_action_pricing || {}).map(([id, value]) => [id, cloneJson(value)]),
+    ),
+    ai_model_policies: new Map(),
+    credit_ledger: new Map(),
+    ai_usage_events: new Map(),
+  };
+
+  return {
+    collection(name) {
+      const store = stores[name];
+      return {
+        doc(id) {
+          return {
+            async get() {
+              return { data: store.has(id) ? cloneJson(store.get(id)) : null };
+            },
+            async set(record) {
+              store.set(id, cloneJson(record));
+              return { id };
+            },
+          };
+        },
+        where(query) {
+          const matched = [...store.values()].filter((entry) =>
+            Object.entries(query).every(([key, value]) => entry?.[key] === value),
+          );
+          return {
+            limit(limitValue) {
+              return {
+                async get() {
+                  return { data: matched.slice(0, limitValue).map((entry) => cloneJson(entry)) };
+                },
+              };
+            },
+            async update(record) {
+              if (matched.length !== 1) return { updated: 0 };
+              store.set(matched[0].id, cloneJson(record));
+              return { updated: 1 };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+function cloneJson(value) {
+  return value === null || value === undefined
+    ? value
+    : JSON.parse(JSON.stringify(value));
+}

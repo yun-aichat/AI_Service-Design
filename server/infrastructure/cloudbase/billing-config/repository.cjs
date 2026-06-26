@@ -1,4 +1,4 @@
-const { COLLECTIONS } = require("../../../application/billing-config.cjs");
+const { BillingConfigError, COLLECTIONS } = require("../../../application/billing-config.cjs");
 
 class CloudBaseBillingConfigRepository {
   constructor(database) {
@@ -57,16 +57,18 @@ class CloudBaseBillingConfigRepository {
     return record;
   }
 
-  async findActionPricingRecord(toolKey, actionKey) {
+  async findActionPricingRecord(toolKey, actionKey, tierKey) {
     const matches = records(
       await this.collections[COLLECTIONS.aiActionPricing]
-        .where({ toolKey, actionKey })
+        .where({ toolKey, actionKey, tierKey })
         .limit(2)
         .get(),
     );
     if (matches.length > 1) {
-      throw new Error(
-        `Multiple action pricing records matched toolKey/actionKey "${toolKey}/${actionKey}".`,
+      throw new BillingConfigError(
+        "ACTION_PRICING_AMBIGUOUS",
+        `Multiple action pricing records matched toolKey/actionKey/tierKey "${toolKey}/${actionKey}/${tierKey}".`,
+        409,
       );
     }
     return matches[0] || null;

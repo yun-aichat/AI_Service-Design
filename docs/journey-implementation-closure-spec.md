@@ -364,6 +364,7 @@ MVP 阶段后台接口只做以下 5 类：
 type UpdateActionPricingCommand = {
   toolKey: string
   actionKey: string
+  tierKey: string
   creditCost: number
   enabled: boolean
   expectedVersion: number
