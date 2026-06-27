@@ -28,6 +28,8 @@ async function handleBillingConfig(request) {
       return service.listCreditLedger({ ...payload, user });
     case "listAiUsageEvents":
       return service.listAiUsageEvents({ ...payload, user });
+    case "updateActionPricing":
+      return service.updateActionPricing({ user, command: payload.command || payload });
     case "listJourneyRunAuditRecords":
       return service.listJourneyRunAuditRecords({ ...payload, user });
     case "upsertCreditPackage":

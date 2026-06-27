@@ -1,4 +1,4 @@
-const { COLLECTIONS } = require("../../../application/billing-config.cjs");
+const { BillingConfigError, COLLECTIONS } = require("../../../application/billing-config.cjs");
 
 class CloudBaseBillingConfigRepository {
   constructor(database) {
@@ -84,6 +84,31 @@ class CloudBaseBillingConfigRepository {
 
     const result = await collection.where({ id: recordId, version: expectedVersion }).update(record);
     return updateCount(result) === 1;
+  }
+  async findActionPricingRecord(toolKey, actionKey, tierKey) {
+    const matches = records(
+      await this.collections[COLLECTIONS.aiActionPricing]
+        .where({ toolKey, actionKey, tierKey })
+        .limit(2)
+        .get(),
+    );
+    if (matches.length > 1) {
+      throw new BillingConfigError(
+        "ACTION_PRICING_AMBIGUOUS",
+        `Multiple action pricing records matched toolKey/actionKey/tierKey "${toolKey}/${actionKey}/${tierKey}".`,
+        409,
+      );
+    }
+    return matches[0] || null;
+  }
+
+  async updateActionPricingRecordIfVersion(recordId, expectedVersion, nextRecord) {
+    return updateIfVersion(
+      this.collections[COLLECTIONS.aiActionPricing],
+      recordId,
+      expectedVersion,
+      nextRecord,
+    );
   }
 }
 
@@ -174,6 +199,17 @@ function requireSortDirection(value) {
     throw new Error("sortDirection must be asc or desc.");
   }
   return direction;
+}
+function records(result) {
+  if (!result?.data) return [];
+  return Array.isArray(result.data) ? result.data : [result.data];
+}
+
+async function updateIfVersion(collection, recordId, expectedVersion, nextRecord) {
+  const result = await collection
+    .where({ id: recordId, version: expectedVersion })
+    .update(nextRecord);
+  return updateCount(result) === 1;
 }
 
 function firstRecord(result) {

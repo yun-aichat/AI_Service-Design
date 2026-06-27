@@ -400,8 +400,10 @@ type BillingPage<T> = {
 type UpdateActionPricingCommand = {
   toolKey: string
   actionKey: string
+  tierKey: string
   creditCost: number
   enabled: boolean
+  expectedVersion: number
 }
 
 type UpdateModelPolicyCommand = {
