@@ -377,6 +377,7 @@ function createHarness(overrides = {}) {
   const personaCalls = [];
   const generatorCalls = [];
   const saveCalls = [];
+  const rollbackCalls = [];
   const service = createJourneyGenerationService({
     personaService: overrides.personaService || {
       async getPersonaInputs(input) {
@@ -416,6 +417,10 @@ function createHarness(overrides = {}) {
         revision: 7,
       };
     }),
+    rollbackJourneyResult: overrides.rollbackJourneyResult || (async (input) => {
+      rollbackCalls.push(input);
+      return null;
+    }),
     createRunId: (() => {
       let tick = 0;
       return () => `journey-run-${++tick}`;
@@ -426,6 +431,7 @@ function createHarness(overrides = {}) {
     billingHarness,
     generatorCalls,
     personaCalls,
+    rollbackCalls,
     saveCalls,
     service,
   };
@@ -469,6 +475,67 @@ test("journey generation surfaces persona input failures with a dedicated error"
   );
 
   assert.deepEqual(generatorCalls, []);
+});
+
+test("journey generation rejects persona results that omit the personas array", async () => {
+  const { service } = createHarness({
+    personaService: {
+      async getPersonaInputs() {
+        return {};
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => service.generateJourney(createValidRequest(), { user: { id: USER_ID } }),
+    (error) =>
+      error instanceof JourneyGenerationServiceError &&
+      error.code === JOURNEY_GENERATION_ERROR_CODES.JOURNEY_PERSONA_UNAVAILABLE &&
+      /personas array/.test(error.message),
+  );
+});
+
+test("journey generation rejects persona results when one persona is missing", async () => {
+  const { service } = createHarness({
+    personaService: {
+      async getPersonaInputs() {
+        return {
+          personas: [createResolvedPersonaInput("persona-1", "首次报名用户")],
+        };
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => service.generateJourney(createValidRequest(), { user: { id: USER_ID } }),
+    (error) =>
+      error instanceof JourneyGenerationServiceError &&
+      error.code === JOURNEY_GENERATION_ERROR_CODES.JOURNEY_PERSONA_UNAVAILABLE &&
+      /persona count/.test(error.message),
+  );
+});
+
+test("journey generation rejects persona results when persona ids do not match the request", async () => {
+  const { service } = createHarness({
+    personaService: {
+      async getPersonaInputs() {
+        return {
+          personas: [
+            createResolvedPersonaInput("persona-1", "首次报名用户"),
+            createResolvedPersonaInput("persona-9", "错误 persona"),
+          ],
+        };
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => service.generateJourney(createValidRequest(), { user: { id: USER_ID } }),
+    (error) =>
+      error instanceof JourneyGenerationServiceError &&
+      error.code === JOURNEY_GENERATION_ERROR_CODES.JOURNEY_PERSONA_UNAVAILABLE &&
+      /persona ids/.test(error.message),
+  );
 });
 
 test("journey generation fails fast when billing action pricing is unavailable", async () => {
@@ -602,4 +669,76 @@ test("journey generation orchestrates persona resolution, model steps, save, and
   assert.equal(account.availableCredits, 180);
   assert.equal(account.reservedCredits, 0);
   assert.equal(account.consumedCredits, 20);
+});
+
+test("journey generation rolls back the saved result when billing commit fails after save", async () => {
+  const billingHarness = createJourneyBillingHarness();
+  const originalBillingService = billingHarness.billingService;
+  const rollbackCalls = [];
+  const saveCalls = [];
+  const service = createJourneyGenerationService({
+    personaService: {
+      async getPersonaInputs() {
+        return {
+          personas: [
+            createResolvedPersonaInput("persona-1", "首次报名用户"),
+            createResolvedPersonaInput("persona-2", "高频体验课用户"),
+          ],
+        };
+      },
+    },
+    billingService: {
+      ...originalBillingService,
+      async commitCredits() {
+        throw new Error("commit unavailable");
+      },
+    },
+    billingConfigService: billingHarness.billingConfigService,
+    skeletonGenerator: {
+      async generate() {
+        return createJourneySkeleton();
+      },
+    },
+    personaRunner: {
+      async run(input) {
+        return createPersonaRunResult(input.persona.personaId, input.persona.profileName);
+      },
+    },
+    synthesizer: {
+      async synthesize() {
+        return createJourneySynthesisResult();
+      },
+    },
+    saveJourneyResult: async (input) => {
+      saveCalls.push(input);
+      return {
+        documentId: "journey-doc-1",
+        revision: 7,
+      };
+    },
+    rollbackJourneyResult: async (input) => {
+      rollbackCalls.push(input);
+      return null;
+    },
+    createRunId: () => "journey-run-1",
+  });
+
+  await seedCredits(originalBillingService);
+
+  await assert.rejects(
+    () => service.generateJourney(createValidRequest(), { user: { id: USER_ID } }),
+    (error) =>
+      error instanceof JourneyGenerationServiceError &&
+      error.code === JOURNEY_GENERATION_ERROR_CODES.JOURNEY_BILLING_COMMIT_FAILED &&
+      /rolled back/.test(error.message),
+  );
+
+  assert.equal(saveCalls.length, 1);
+  assert.equal(rollbackCalls.length, 1);
+  assert.equal(rollbackCalls[0].saved.documentId, "journey-doc-1");
+
+  const account = await originalBillingService.getCreditAccount({ accountId: USER_ID });
+  assert.equal(account.availableCredits, 200);
+  assert.equal(account.reservedCredits, 0);
+  assert.equal(account.consumedCredits, 0);
 });

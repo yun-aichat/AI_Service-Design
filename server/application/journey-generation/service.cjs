@@ -23,6 +23,7 @@ const {
 
 const JOURNEY_TOOL_KEY = "journey-map";
 const JOURNEY_TIER_KEY = "standard";
+const JOURNEY_BILLING_RESERVATION_ACTION_KEY = "journey_generation";
 
 const ACTION_KEYS = Object.freeze({
   SKELETON_GENERATE: "skeleton_generate",
@@ -36,6 +37,7 @@ const JOURNEY_GENERATION_ERROR_CODES = Object.freeze({
   JOURNEY_PERSONA_UNAVAILABLE: "JOURNEY_PERSONA_UNAVAILABLE",
   JOURNEY_BILLING_ACTION_UNAVAILABLE: "JOURNEY_BILLING_ACTION_UNAVAILABLE",
   JOURNEY_MODEL_POLICY_UNAVAILABLE: "JOURNEY_MODEL_POLICY_UNAVAILABLE",
+  JOURNEY_BILLING_COMMIT_FAILED: "JOURNEY_BILLING_COMMIT_FAILED",
   JOURNEY_MODEL_CALL_FAILED: "JOURNEY_MODEL_CALL_FAILED",
   JOURNEY_MODEL_OUTPUT_INVALID: "JOURNEY_MODEL_OUTPUT_INVALID",
   JOURNEY_DOCUMENT_SAVE_FAILED: "JOURNEY_DOCUMENT_SAVE_FAILED",
@@ -59,6 +61,7 @@ function createJourneyGenerationService({
   personaRunner,
   synthesizer,
   saveJourneyResult,
+  rollbackJourneyResult,
   invokeAction,
   createRunId = defaultCreateRunId,
 } = {}) {
@@ -73,6 +76,9 @@ function createJourneyGenerationService({
   }
   if (typeof saveJourneyResult !== "function") {
     throw new Error("Journey generation service requires saveJourneyResult().");
+  }
+  if (typeof rollbackJourneyResult !== "function") {
+    throw new Error("Journey generation service requires rollbackJourneyResult().");
   }
 
   const resolvedSkeletonGenerator =
@@ -102,6 +108,8 @@ function createJourneyGenerationService({
           user,
           personaCount: personas.length,
         });
+        const billingSummary = buildBillingSummary(actionPlan);
+        const modelSummary = collectModelSummary(actionPlan);
 
         await reserveJourneyCredits({
           billingService,
@@ -109,7 +117,7 @@ function createJourneyGenerationService({
           referenceId,
           runId,
           user,
-          actionPlan,
+          billingSummary,
         });
 
         const skeleton = normalizeGeneratorOutput(
@@ -161,15 +169,21 @@ function createJourneyGenerationService({
           skeleton,
           runResults,
           result: synthesisResult,
-          billing: buildBillingSummary(actionPlan),
-          modelSummary: collectModelSummary(actionPlan),
+          billing: billingSummary,
+          modelSummary,
         });
 
-        await commitJourneyCredits({
+        await commitJourneyCreditsAfterSave({
           billingService,
+          rollbackJourneyResult,
           releaseStack,
           referenceId,
-          actionPlan,
+          runId,
+          user,
+          request,
+          saved,
+          result: synthesisResult,
+          billingSummary,
         });
 
         return normalizeJourneyGenerationResponse({
@@ -177,8 +191,8 @@ function createJourneyGenerationService({
           documentId: saved.documentId,
           revision: saved.revision,
           result: synthesisResult,
-          billing: buildBillingSummary(actionPlan),
-          modelSummary: collectModelSummary(actionPlan),
+          billing: billingSummary,
+          modelSummary,
         });
       } catch (error) {
         await releaseJourneyCredits({
@@ -227,8 +241,11 @@ async function resolvePersonaInputs({ personaService, request, user }) {
       projectId: request.projectId,
       personaIds: request.personaIds,
     });
-    return Array.isArray(result?.personas) ? result.personas : [];
+    return validateResolvedPersonaInputs(result, request.personaIds);
   } catch (error) {
+    if (error instanceof JourneyGenerationServiceError) {
+      throw error;
+    }
     const detail = error?.code ? `${error.code}: ${error.message}` : error?.message || String(error);
     throw new JourneyGenerationServiceError(
       JOURNEY_GENERATION_ERROR_CODES.JOURNEY_PERSONA_UNAVAILABLE,
@@ -327,63 +344,82 @@ async function reserveJourneyCredits({
   referenceId,
   runId,
   user,
-  actionPlan,
+  billingSummary,
 }) {
-  for (const actionKey of [
-    ACTION_KEYS.SKELETON_GENERATE,
-    ACTION_KEYS.PERSONA_RUN,
-    ACTION_KEYS.JOURNEY_SYNTHESIS,
-  ]) {
-    const entry = actionPlan[actionKey];
-    const reservationResult = await billingService.reserveCredits({
-      accountId: user.id,
+  const reservationResult = await billingService.reserveCredits({
+    accountId: user.id,
+    referenceId,
+    toolKey: JOURNEY_TOOL_KEY,
+    actionKey: JOURNEY_BILLING_RESERVATION_ACTION_KEY,
+    tierKey: JOURNEY_TIER_KEY,
+    credits: billingSummary.chargedCredits,
+    idempotencyKey: buildIdempotencyKey({
+      scope: "credit.reserve",
       referenceId,
-      toolKey: JOURNEY_TOOL_KEY,
-      actionKey,
-      tierKey: JOURNEY_TIER_KEY,
-      credits: entry.credits,
-      idempotencyKey: buildIdempotencyKey({
-        scope: "credit.reserve",
-        referenceId,
-        requestId: `${runId}.${actionKey}`,
-      }),
-      metadata: {
-        runId,
-        actionKey,
-        multiplier: entry.multiplier,
-      },
-    });
+      requestId: runId,
+    }),
+    metadata: {
+      runId,
+      actionBreakdown: billingSummary.actionBreakdown,
+    },
+  });
 
-    releaseStack.push({
-      actionKey,
-      reservationId: reservationResult.reservation.id,
-      state: "reserved",
-    });
-  }
+  releaseStack.push({
+    actionKey: JOURNEY_BILLING_RESERVATION_ACTION_KEY,
+    reservationId: reservationResult.reservation.id,
+    state: "reserved",
+  });
 }
 
-async function commitJourneyCredits({
+async function commitJourneyCreditsAfterSave({
   billingService,
+  rollbackJourneyResult,
   releaseStack,
   referenceId,
-  actionPlan,
+  runId,
+  user,
+  request,
+  saved,
+  result,
+  billingSummary,
 }) {
   for (const reservation of releaseStack) {
     if (reservation.state !== "reserved") continue;
-    await billingService.commitCredits({
-      reservationId: reservation.reservationId,
-      referenceId,
-      idempotencyKey: buildIdempotencyKey({
-        scope: "credit.commit",
+    try {
+      await billingService.commitCredits({
+        reservationId: reservation.reservationId,
         referenceId,
-        requestId: reservation.actionKey,
-      }),
-      metadata: {
-        actionKey: reservation.actionKey,
-        credits: actionPlan[reservation.actionKey]?.credits || 0,
-      },
-    });
-    reservation.state = "committed";
+        idempotencyKey: buildIdempotencyKey({
+          scope: "credit.commit",
+          referenceId,
+          requestId: runId,
+        }),
+        metadata: {
+          actionBreakdown: billingSummary.actionBreakdown,
+          chargedCredits: billingSummary.chargedCredits,
+        },
+      });
+      reservation.state = "committed";
+    } catch (error) {
+      const rollbackError = await rollbackSavedJourneyResult({
+        rollbackJourneyResult,
+        runId,
+        user,
+        request,
+        saved,
+        result,
+        error,
+      });
+      const detail = rollbackError
+        ? `${error?.message || String(error)} Rollback also failed: ${rollbackError.message}`
+        : `${error?.message || String(error)} Saved journey result was rolled back.`;
+      throw new JourneyGenerationServiceError(
+        JOURNEY_GENERATION_ERROR_CODES.JOURNEY_BILLING_COMMIT_FAILED,
+        `Journey billing commit failed after save. ${detail}`,
+        error?.status || 500,
+        rollbackError || error,
+      );
+    }
   }
 }
 
@@ -504,6 +540,67 @@ function buildBillingSummary(actionPlan) {
   };
 }
 
+function validateResolvedPersonaInputs(result, requestedPersonaIds) {
+  if (!Array.isArray(result?.personas)) {
+    throw new JourneyGenerationServiceError(
+      JOURNEY_GENERATION_ERROR_CODES.JOURNEY_PERSONA_UNAVAILABLE,
+      "Persona inputs are unavailable. persona result must include a personas array.",
+      400,
+    );
+  }
+
+  if (result.personas.length !== requestedPersonaIds.length) {
+    throw new JourneyGenerationServiceError(
+      JOURNEY_GENERATION_ERROR_CODES.JOURNEY_PERSONA_UNAVAILABLE,
+      "Persona inputs are unavailable. persona count does not match the request.",
+      400,
+    );
+  }
+
+  const requestedSet = new Set(requestedPersonaIds);
+  const returnedPersonaIds = result.personas.map((persona, index) =>
+    requireString(persona?.personaId, `personas[${index}].personaId`),
+  );
+  const returnedSet = new Set(returnedPersonaIds);
+  const sameIds =
+    returnedSet.size === requestedSet.size &&
+    requestedPersonaIds.every((personaId) => returnedSet.has(personaId));
+
+  if (!sameIds) {
+    throw new JourneyGenerationServiceError(
+      JOURNEY_GENERATION_ERROR_CODES.JOURNEY_PERSONA_UNAVAILABLE,
+      "Persona inputs are unavailable. returned persona ids do not match the request.",
+      400,
+    );
+  }
+
+  return result.personas;
+}
+
+async function rollbackSavedJourneyResult({
+  rollbackJourneyResult,
+  runId,
+  user,
+  request,
+  saved,
+  result,
+  error,
+}) {
+  try {
+    await rollbackJourneyResult({
+      runId,
+      user,
+      request,
+      saved,
+      result,
+      error,
+    });
+    return null;
+  } catch (rollbackError) {
+    return rollbackError;
+  }
+}
+
 function collectModelSummary(actionPlan) {
   const seen = new Set();
   const summary = [];
@@ -571,6 +668,7 @@ function defaultCreateRunId() {
 
 module.exports = {
   ACTION_KEYS,
+  JOURNEY_BILLING_RESERVATION_ACTION_KEY,
   JOURNEY_GENERATION_ERROR_CODES,
   JOURNEY_TIER_KEY,
   JOURNEY_TOOL_KEY,
