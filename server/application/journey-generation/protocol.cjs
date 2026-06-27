@@ -12,6 +12,8 @@ const JOURNEY_SYNTHESIS_ROW_KEYS = Object.freeze([
   "delightPoints",
 ]);
 
+const JOURNEY_GENERATION_EXTRA_NOTES_MAX_LENGTH = 1000;
+
 const JOURNEY_GENERATION_PROTOCOL_ERROR_CODES = Object.freeze({
   INVALID_JOURNEY_GENERATION_REQUEST: "INVALID_JOURNEY_GENERATION_REQUEST",
   JOURNEY_PERSONA_IDS_EMPTY: "JOURNEY_PERSONA_IDS_EMPTY",
@@ -73,7 +75,12 @@ function normalizeJourneyGenerationRequest(input) {
       "scope",
       JOURNEY_GENERATION_PROTOCOL_ERROR_CODES.INVALID_JOURNEY_GENERATION_REQUEST,
     ),
-    extraNotes: normalizeOptionalString(input.extraNotes),
+    extraNotes: normalizeOptionalString(
+      input.extraNotes,
+      "extraNotes",
+      JOURNEY_GENERATION_PROTOCOL_ERROR_CODES.INVALID_JOURNEY_GENERATION_REQUEST,
+      JOURNEY_GENERATION_EXTRA_NOTES_MAX_LENGTH,
+    ),
     personaIds: normalizePersonaIds(input.personaIds),
   };
 }
@@ -469,7 +476,7 @@ function normalizeRowCell(input, field) {
   const contrastingPersonaIds =
     input.contrastingPersonaIds === undefined
       ? null
-      : normalizeStringArray(
+      : normalizeNonEmptyStringArray(
           input.contrastingPersonaIds,
           `${field}.contrastingPersonaIds`,
           JOURNEY_GENERATION_PROTOCOL_ERROR_CODES.INVALID_JOURNEY_SYNTHESIS_RESULT,
@@ -606,10 +613,17 @@ function requireString(value, field, code, status = 400) {
   return value.trim();
 }
 
-function normalizeOptionalString(value) {
+function normalizeOptionalString(value, field, code, maxLength) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  return trimmed || null;
+  if (!trimmed) return null;
+  if (Number.isInteger(maxLength) && trimmed.length > maxLength) {
+    throw createJourneyProtocolError(
+      code || JOURNEY_GENERATION_PROTOCOL_ERROR_CODES.INVALID_JOURNEY_GENERATION_REQUEST,
+      `${field || "value"} must be at most ${maxLength} characters.`,
+    );
+  }
+  return trimmed;
 }
 
 function normalizeStringArray(input, field, code, status = 400) {
@@ -617,6 +631,14 @@ function normalizeStringArray(input, field, code, status = 400) {
     throw createJourneyProtocolError(code, `${field} must be an array.`, status);
   }
   return input.map((entry, index) => requireString(entry, `${field}[${index}]`, code, status));
+}
+
+function normalizeNonEmptyStringArray(input, field, code, status = 400) {
+  const values = normalizeStringArray(input, field, code, status);
+  if (values.length === 0) {
+    throw createJourneyProtocolError(code, `${field} must contain at least one value.`, status);
+  }
+  return values;
 }
 
 function requirePositiveInteger(value, field, code, status = 400) {

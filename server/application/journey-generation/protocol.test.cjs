@@ -259,6 +259,18 @@ test("normalizeJourneyGenerationRequest rejects unsupported source", () => {
   );
 });
 
+test("normalizeJourneyGenerationRequest rejects extraNotes longer than 1000 characters after trim", () => {
+  const request = createValidRequest();
+  request.extraNotes = ` ${"a".repeat(1001)} `;
+
+  assert.throws(
+    () => normalizeJourneyGenerationRequest(request),
+    (error) =>
+      error instanceof JourneyGenerationProtocolError &&
+      error.code === JOURNEY_GENERATION_PROTOCOL_ERROR_CODES.INVALID_JOURNEY_GENERATION_REQUEST,
+  );
+});
+
 test("normalizeJourneySkeleton preserves valid nested stages and steps", () => {
   const normalized = normalizeJourneySkeleton(createValidSkeleton());
 
@@ -349,6 +361,18 @@ test("normalizeJourneySynthesisResult rejects row sets that do not cover all ske
 test("normalizeJourneySynthesisResult rejects empty supportingPersonaIds", () => {
   const result = createValidJourneySynthesisResult();
   result.mergedRows.feelings[0].supportingPersonaIds = [];
+
+  assert.throws(
+    () => normalizeJourneySynthesisResult(result),
+    (error) =>
+      error instanceof JourneyGenerationProtocolError &&
+      error.code === JOURNEY_GENERATION_PROTOCOL_ERROR_CODES.INVALID_JOURNEY_SYNTHESIS_RESULT,
+  );
+});
+
+test("normalizeJourneySynthesisResult rejects empty contrastingPersonaIds when the field is present", () => {
+  const result = createValidJourneySynthesisResult();
+  result.mergedRows.thoughts[0].contrastingPersonaIds = [];
 
   assert.throws(
     () => normalizeJourneySynthesisResult(result),
