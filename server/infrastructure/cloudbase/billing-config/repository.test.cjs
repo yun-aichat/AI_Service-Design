@@ -237,6 +237,51 @@ test("upsertRecord overwrites the same billing config id instead of duplicating 
   assert.equal(stores.ai_action_pricing.get("journey:proposal:standard").creditCost, 20);
 });
 
+test("listRecords filters ai_usage_events by formal journey audit fields", async () => {
+  const { repository } = createRepository({
+    ai_usage_events: {
+      "usage-1": {
+        id: "usage-1",
+        runId: "journey-run-1",
+        actionKey: "proposal",
+        providerKey: "openai",
+        modelKey: "gpt-5-mini",
+        conversationId: "conversation-1",
+        status: "succeeded",
+        referenceId: "ai_run:journey-run-1",
+        createdAt: "2026-06-14T00:00:02.000Z",
+      },
+      "usage-2": {
+        id: "usage-2",
+        runId: "journey-run-2",
+        actionKey: "proposal",
+        providerKey: "glm",
+        modelKey: "glm-4.6",
+        conversationId: "conversation-2",
+        status: "failed",
+        referenceId: "ai_run:journey-run-2",
+        createdAt: "2026-06-14T00:00:01.000Z",
+      },
+    },
+  });
+
+  const result = await repository.listRecords("ai_usage_events", {
+    filters: {
+      providerKey: "openai",
+      conversationId: "conversation-1",
+      status: "succeeded",
+    },
+    sortBy: "createdAt",
+    sortDirection: "desc",
+    limit: 10,
+    offset: 0,
+  });
+
+  assert.equal(result.total, 1);
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].id, "usage-1");
+});
+
 test("saveRecordWithVersion creates and updates a model policy with optimistic concurrency", async () => {
   const { repository, stores } = createRepository();
 

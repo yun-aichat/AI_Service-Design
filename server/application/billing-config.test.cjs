@@ -638,3 +638,231 @@ test("listCreditLedger and listAiUsageEvents require admin access", async () => 
   assert.equal(ledger.items.length, 1);
   assert.equal(usage.items.length, 1);
 });
+
+
+test("listJourneyRunAuditRecords returns a formal audit page with filters and pagination", async () => {
+  const { service } = createHarness({
+    aiUsageEvents: {
+      "audit-1": {
+        id: "audit-1",
+        runId: "journey-run-1",
+        userId: "user-1",
+        projectId: "project-1",
+        documentId: "doc-1",
+        toolKey: "journey-map",
+        actionKey: "proposal",
+        tierKey: "standard",
+        providerKey: "openai",
+        modelKey: "gpt-5-mini",
+        provider: "openai",
+        model: "gpt-5-mini",
+        endpoint: "https://api.openai.com/v1",
+        conversationId: "conversation-1",
+        chargedCredits: 15,
+        status: "succeeded",
+        referenceId: "ai_run:journey-run-1",
+        createdAt: "2026-06-14T00:00:02.000Z",
+      },
+      "audit-2": {
+        id: "audit-2",
+        runId: "journey-run-2",
+        userId: "user-2",
+        projectId: "project-2",
+        documentId: "doc-2",
+        toolKey: "journey-map",
+        actionKey: "clarify",
+        tierKey: "standard",
+        providerKey: "glm",
+        modelKey: "glm-4.6",
+        provider: "glm",
+        model: "glm-4.6",
+        endpoint: null,
+        conversationId: "conversation-2",
+        chargedCredits: 0,
+        status: "cancelled",
+        referenceId: "ai_run:journey-run-2",
+        createdAt: "2026-06-14T00:00:01.000Z",
+      },
+      "audit-3": {
+        id: "audit-3",
+        runId: "assistant-run-1",
+        toolKey: "assistant-tool",
+        actionKey: "proposal",
+        tierKey: "standard",
+        providerKey: "openai",
+        modelKey: "gpt-5-mini",
+        provider: "openai",
+        model: "gpt-5-mini",
+        conversationId: "conversation-1",
+        chargedCredits: 9,
+        status: "succeeded",
+        referenceId: "ai_run:assistant-run-1",
+        createdAt: "2026-06-14T00:00:03.000Z",
+      },
+    },
+  });
+
+  const filtered = await service.listJourneyRunAuditRecords({
+    user: admin,
+    providerKey: "openai",
+    conversationId: "conversation-1",
+    limit: 1,
+    offset: 0,
+  });
+
+  assert.equal(filtered.page.total, 1);
+  assert.equal(filtered.page.hasMore, false);
+  assert.deepEqual(filtered.items[0], {
+    id: "audit-1",
+    runId: "journey-run-1",
+    userId: "user-1",
+    projectId: "project-1",
+    documentId: "doc-1",
+    actionKey: "proposal",
+    chargedCredits: 15,
+    providerKey: "openai",
+    modelKey: "gpt-5-mini",
+    endpoint: "https://api.openai.com/v1",
+    conversationId: "conversation-1",
+    referenceId: "ai_run:journey-run-1",
+    status: "succeeded",
+    createdAt: "2026-06-14T00:00:02.000Z",
+  });
+
+  const paged = await service.listJourneyRunAuditRecords({
+    user: billingAdmin,
+    limit: 1,
+    offset: 1,
+  });
+
+  assert.equal(paged.page.total, 2);
+  assert.equal(paged.page.hasMore, false);
+  assert.equal(paged.items[0].runId, "journey-run-2");
+});
+
+test("listJourneyRunAuditRecords keeps provider/model fallback filters aligned for legacy records", async () => {
+  const { service } = createHarness({
+    aiUsageEvents: {
+      "legacy-audit": {
+        id: "legacy-audit",
+        runId: "journey-run-legacy",
+        userId: "user-legacy",
+        projectId: "project-legacy",
+        documentId: "doc-legacy",
+        toolKey: "journey-map",
+        actionKey: "proposal",
+        tierKey: "standard",
+        provider: "openai",
+        model: "gpt-5-mini",
+        chargedCredits: 12,
+        status: "succeeded",
+        referenceId: "ai_run:journey-run-legacy",
+        createdAt: "2026-06-14T00:00:03.000Z",
+      },
+      "new-audit": {
+        id: "new-audit",
+        runId: "journey-run-new",
+        userId: "user-new",
+        projectId: "project-new",
+        documentId: "doc-new",
+        toolKey: "journey-map",
+        actionKey: "proposal",
+        tierKey: "standard",
+        providerKey: "glm",
+        modelKey: "glm-4.6",
+        provider: "glm",
+        model: "glm-4.6",
+        chargedCredits: 9,
+        status: "succeeded",
+        referenceId: "ai_run:journey-run-new",
+        createdAt: "2026-06-14T00:00:02.000Z",
+      },
+      "assistant-audit": {
+        id: "assistant-audit",
+        runId: "assistant-run-1",
+        toolKey: "assistant-tool",
+        actionKey: "proposal",
+        tierKey: "standard",
+        provider: "openai",
+        model: "gpt-5-mini",
+        chargedCredits: 5,
+        status: "succeeded",
+        referenceId: "ai_run:assistant-run-1",
+        createdAt: "2026-06-14T00:00:04.000Z",
+      },
+    },
+  });
+
+  const all = await service.listJourneyRunAuditRecords({
+    user: admin,
+    limit: 10,
+    offset: 0,
+  });
+  assert.equal(all.page.total, 2);
+  assert.equal(all.items[0].runId, "journey-run-legacy");
+  assert.equal(all.items[0].providerKey, "openai");
+  assert.equal(all.items[0].modelKey, "gpt-5-mini");
+
+  const byProvider = await service.listJourneyRunAuditRecords({
+    user: admin,
+    providerKey: "openai",
+    limit: 10,
+    offset: 0,
+  });
+  assert.equal(byProvider.page.total, 1);
+  assert.equal(byProvider.items[0].runId, "journey-run-legacy");
+
+  const byModel = await service.listJourneyRunAuditRecords({
+    user: admin,
+    modelKey: "gpt-5-mini",
+    limit: 10,
+    offset: 0,
+  });
+  assert.equal(byModel.page.total, 1);
+  assert.equal(byModel.items[0].runId, "journey-run-legacy");
+
+  const pagedByProvider = await service.listJourneyRunAuditRecords({
+    user: admin,
+    providerKey: "glm",
+    limit: 1,
+    offset: 0,
+  });
+  assert.equal(pagedByProvider.page.total, 1);
+  assert.equal(pagedByProvider.page.hasMore, false);
+  assert.equal(pagedByProvider.items[0].runId, "journey-run-new");
+});
+
+test("listJourneyRunAuditRecords requires admin access and only supports createdAt sorting", async () => {
+  const { service } = createHarness({
+    aiUsageEvents: {
+      "audit-1": {
+        id: "audit-1",
+        runId: "journey-run-1",
+        toolKey: "journey-map",
+        actionKey: "proposal",
+        tierKey: "standard",
+        providerKey: "openai",
+        modelKey: "gpt-5-mini",
+        provider: "openai",
+        model: "gpt-5-mini",
+        chargedCredits: 15,
+        status: "succeeded",
+        referenceId: "ai_run:journey-run-1",
+        createdAt: "2026-06-14T00:00:02.000Z",
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => service.listJourneyRunAuditRecords({ user: reader }),
+    (error) => error instanceof BillingConfigError && error.code === "FORBIDDEN",
+  );
+
+  await assert.rejects(
+    () => service.listJourneyRunAuditRecords({ user: admin, sortBy: "status" }),
+    (error) =>
+      error instanceof BillingConfigError &&
+      error.code === "INVALID_INPUT" &&
+      /sortBy=createdAt/.test(error.message),
+  );
+});

@@ -94,17 +94,20 @@ function createToolDocumentAssistantUsageRecorder({
       }
 
       if (billingConfigService?.recordAiUsageEvent) {
-        let provider = "unknown";
+        let providerKey = "unknown";
+        let modelKey = model || "unknown";
+        let endpoint = null;
         try {
           const result = await billingConfigService.listAiModelPolicies({
             user: { id: "system" },
             toolKey: usageKeys.toolKey,
             actionKey: usageKeys.actionKey,
-
             enabled: true,
             limit: 1,
           });
-          provider = result?.items?.[0]?.provider || provider;
+          providerKey = result?.items?.[0]?.providerKey || result?.items?.[0]?.provider || providerKey;
+          modelKey = result?.items?.[0]?.modelKey || result?.items?.[0]?.model || modelKey;
+          endpoint = result?.items?.[0]?.endpoint || null;
         } catch {}
 
         try {
@@ -113,11 +116,16 @@ function createToolDocumentAssistantUsageRecorder({
               userId: user.id,
               projectId: request.document.projectId,
               documentId: request.document.documentId,
+              runId: runId || null,
               toolKey: usageKeys.toolKey,
               actionKey: usageKeys.actionKey,
               tierKey: usageKeys.tierKey,
-              provider,
-              model: model || "unknown",
+              providerKey,
+              modelKey,
+              provider: providerKey,
+              model: modelKey,
+              endpoint,
+              conversationId: null,
               inputTokens,
               outputTokens,
               totalTokens,

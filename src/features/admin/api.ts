@@ -70,18 +70,41 @@ export type AiUsageEventRecord = {
   userId: string | null;
   projectId: string | null;
   documentId: string | null;
+  runId: string | null;
   toolKey: string;
   actionKey: string;
   tierKey: string;
+  providerKey: string;
+  modelKey: string;
   provider: string;
   model: string;
+  endpoint: string | null;
+  conversationId: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
   totalTokens: number | null;
   estimatedCostValue: number | null;
   chargedCredits: number;
   status: string;
+  billingStatus?: string | null;
   referenceId: string;
+  createdAt: string;
+};
+
+export type JourneyRunAuditRecord = {
+  id: string;
+  runId: string;
+  userId: string | null;
+  projectId: string | null;
+  documentId: string | null;
+  actionKey: string;
+  chargedCredits: number;
+  providerKey: string;
+  modelKey: string;
+  endpoint: string | null;
+  conversationId: string | null;
+  referenceId: string;
+  status: string;
   createdAt: string;
 };
 
@@ -176,6 +199,21 @@ export async function listAiUsageEvents(input?: {
   sortDirection?: string;
 }): Promise<BillingPage<AiUsageEventRecord>> {
   return requestBillingConfig("listAiUsageEvents", input);
+}
+
+export async function listJourneyRunAuditRecords(input?: {
+  actionKey?: string;
+  providerKey?: string;
+  modelKey?: string;
+  status?: string;
+  referenceId?: string;
+  conversationId?: string;
+  limit?: number;
+  offset?: number;
+  sortBy?: "createdAt";
+  sortDirection?: "desc" | "asc";
+}): Promise<BillingPage<JourneyRunAuditRecord>> {
+  return requestBillingConfig("listJourneyRunAuditRecords", input);
 }
 
 export async function debugAuthProfile(): Promise<BillingAuthProfile> {

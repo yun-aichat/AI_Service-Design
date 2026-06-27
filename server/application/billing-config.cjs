@@ -7,6 +7,14 @@ const COLLECTIONS = Object.freeze({
 });
 
 const ADMIN_ROLES = Object.freeze(["admin", "billing-admin"]);
+const JOURNEY_RUN_AUDIT_FIELDS = Object.freeze([
+  "actionKey",
+  "providerKey",
+  "modelKey",
+  "status",
+  "referenceId",
+  "conversationId",
+]);
 const MODEL_POLICY_COMMAND_FIELDS = Object.freeze([
   "toolKey",
   "actionKey",
@@ -236,6 +244,41 @@ function createBillingConfigService({
     });
   }
 
+  async function listJourneyRunAuditRecords(input = {}) {
+    assertAdminUser(input.user);
+    const limit = requirePageSize(input.limit);
+    const offset = requireOffset(input.offset);
+    const sortBy = requireJourneyRunAuditSortKey(optionalString(input.sortBy) || "createdAt");
+    const sortDirection = requireSortDirection(optionalString(input.sortDirection) || "desc");
+    const sourceRecords = await listAllRecords({
+      repository,
+      collectionName: COLLECTIONS.aiUsageEvents,
+      filters: {
+        toolKey: "journey-map",
+        ...pickDefinedFilters(input, ["actionKey", "status", "referenceId", "conversationId"]),
+      },
+      sortBy,
+      sortDirection,
+      createdFrom: input.createdFrom,
+      createdTo: input.createdTo,
+      batchSize: 200,
+    });
+    const matched = sourceRecords
+      .map((record) => toJourneyRunAuditRecord(record))
+      .filter((record) => matchesJourneyRunAuditFilter(record, input));
+    const items = matched.slice(offset, offset + limit);
+
+    return {
+      items,
+      page: {
+        limit,
+        offset,
+        total: matched.length,
+        hasMore: offset + items.length < matched.length,
+      },
+    };
+  }
+
   async function upsertCreditPackage(input = {}) {
     const user = assertAdminUser(input.user);
     const record = validateCreditPackage(input.record || {});
@@ -380,11 +423,16 @@ function createBillingConfigService({
       userId: record.userId || null,
       projectId: record.projectId || null,
       documentId: record.documentId || null,
+      runId: record.runId || null,
       toolKey: record.toolKey,
       actionKey: record.actionKey,
       tierKey: record.tierKey,
+      providerKey: record.providerKey,
+      modelKey: record.modelKey,
       provider: record.provider,
       model: record.model,
+      endpoint: record.endpoint,
+      conversationId: record.conversationId,
       inputTokens: typeof record.inputTokens === "number" ? record.inputTokens : null,
       outputTokens: typeof record.outputTokens === "number" ? record.outputTokens : null,
       totalTokens,
@@ -405,6 +453,7 @@ function createBillingConfigService({
     listAiActionPricing,
     listAiModelPolicies,
     listAiUsageEvents,
+    listJourneyRunAuditRecords,
     listCreditLedger,
     listCreditPackages,
     recordAiUsageEvent,
@@ -701,11 +750,16 @@ function validateAiUsageEvent(record) {
     userId: optionalString(record.userId),
     projectId: optionalString(record.projectId),
     documentId: optionalString(record.documentId),
+    runId: optionalString(record.runId),
     toolKey: requireString(record.toolKey, "record.toolKey"),
     actionKey: requireString(record.actionKey, "record.actionKey"),
     tierKey: requireString(record.tierKey, "record.tierKey"),
+    providerKey: requireString(record.providerKey ?? record.provider, "record.providerKey"),
+    modelKey: requireString(record.modelKey ?? record.model, "record.modelKey"),
     provider: requireString(record.provider, "record.provider"),
     model: requireString(record.model, "record.model"),
+    endpoint: optionalNullableString(record.endpoint, "record.endpoint"),
+    conversationId: optionalNullableString(record.conversationId, "record.conversationId"),
     inputTokens:
       record.inputTokens === undefined || record.inputTokens === null
         ? null
@@ -730,6 +784,41 @@ function validateAiUsageEvent(record) {
     billingStatus,
     referenceId: requireString(record.referenceId, "record.referenceId"),
   };
+}
+
+function toJourneyRunAuditRecord(record) {
+  return {
+    id: safeOptionalString(record?.id) || buildJourneyRunAuditId(record),
+    runId: safeOptionalString(record?.runId) || safeOptionalString(record?.referenceId),
+    userId: safeOptionalString(record?.userId),
+    projectId: safeOptionalString(record?.projectId),
+    documentId: safeOptionalString(record?.documentId),
+    actionKey: safeOptionalString(record?.actionKey),
+    chargedCredits:
+      typeof record?.chargedCredits === "number" ? record.chargedCredits : 0,
+    providerKey:
+      safeOptionalString(record?.providerKey) || safeOptionalString(record?.provider),
+    modelKey: safeOptionalString(record?.modelKey) || safeOptionalString(record?.model),
+    endpoint: safeOptionalString(record?.endpoint),
+    conversationId: safeOptionalString(record?.conversationId),
+    referenceId: safeOptionalString(record?.referenceId),
+    status: safeOptionalString(record?.status),
+    createdAt: safeOptionalString(record?.createdAt),
+  };
+}
+
+function buildJourneyRunAuditId(record) {
+  return `${safeOptionalString(record?.referenceId) || "audit"}:${safeOptionalString(record?.status) || "unknown"}`;
+}
+
+function matchesJourneyRunAuditFilter(record, input) {
+  if (input.actionKey && record.actionKey !== input.actionKey) return false;
+  if (input.providerKey && record.providerKey !== input.providerKey) return false;
+  if (input.modelKey && record.modelKey !== input.modelKey) return false;
+  if (input.status && record.status !== input.status) return false;
+  if (input.referenceId && record.referenceId !== input.referenceId) return false;
+  if (input.conversationId && record.conversationId !== input.conversationId) return false;
+  return true;
 }
 
 function sortRecords(records, sortBy, sortDirection) {
@@ -847,6 +936,17 @@ function requireSortDirection(value) {
 
 function requireSortKey(value) {
   return optionalString(value) || "updatedAt";
+}
+
+function requireJourneyRunAuditSortKey(value) {
+  const sortKey = optionalString(value) || "createdAt";
+  if (sortKey !== "createdAt") {
+    throw new BillingConfigError(
+      "INVALID_INPUT",
+      "Journey run audit only supports sortBy=createdAt.",
+    );
+  }
+  return sortKey;
 }
 
 function requireCurrency(value) {
