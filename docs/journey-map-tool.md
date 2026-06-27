@@ -217,6 +217,7 @@ type JourneyRowCell = {
   stepId: string
   summary: string
   supportingPersonaIds: string[]
+  // Optional, but must be non-empty when present.
   contrastingPersonaIds?: string[]
 }
 

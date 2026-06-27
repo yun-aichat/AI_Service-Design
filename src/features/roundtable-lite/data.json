@@ -1,16 +1,16 @@
 {
-  "generated_at": "2026-06-24T12:32:51.772Z",
+  "generated_at": "2026-06-27T11:38:18.421Z",
   "summary": {
-    "total_tasks": 57,
-    "completed": 25,
-    "cancelled": 25,
+    "total_tasks": 62,
+    "completed": 32,
+    "cancelled": 26,
     "in_review": 0,
-    "in_progress": 1,
-    "queued": 6,
-    "total_reviews": 27,
-    "approved_reviews": 19,
-    "changes_requested": 8,
-    "approval_rate": 70
+    "in_progress": 0,
+    "queued": 4,
+    "total_reviews": 42,
+    "approved_reviews": 26,
+    "changes_requested": 16,
+    "approval_rate": 62
   },
   "migration": {
     "migrated_at": "2026-06-07T04:35:49.143Z",
@@ -100,13 +100,13 @@
       "description": "负责积分账本、动作定价、模型策略、后台配置读取与写入边界。",
       "task": "承接动作层积分配置、模型策略配置与 usage/audit 查询。",
       "output_path": "src/features/billing, server/application/billing, server/infrastructure/payments, server/application/billing-config.cjs, server/infrastructure/cloudbase/billing-config",
-      "total": 9,
-      "completed": 4,
+      "total": 11,
+      "completed": 7,
       "in_progress": 0,
       "review": 0,
-      "queued": 1,
+      "queued": 0,
       "cancelled": 4,
-      "high_risk": 6
+      "high_risk": 8
     },
     {
       "name": "persistence-backend",
@@ -120,10 +120,10 @@
       "task": "承接正式文档与审计事件落库，不吞并领域规则。",
       "output_path": "server, src/infrastructure/cloudbase",
       "total": 6,
-      "completed": 2,
+      "completed": 3,
       "in_progress": 0,
       "review": 0,
-      "queued": 1,
+      "queued": 0,
       "cancelled": 3,
       "high_risk": 4
     },
@@ -140,13 +140,13 @@
       "description": "负责正式 Journey 生成请求、骨架生成、单 Persona 推演、汇总与落库。",
       "task": "按三段式编排实现正式 Journey generation，不与 Assistant 澄清链路混写。",
       "output_path": "server/application/journey-generation, api/journey-generate.js, server/journey-generate.cjs",
-      "total": 1,
-      "completed": 0,
+      "total": 4,
+      "completed": 2,
       "in_progress": 0,
       "review": 0,
-      "queued": 1,
+      "queued": 2,
       "cancelled": 0,
-      "high_risk": 1
+      "high_risk": 3
     },
     {
       "name": "admin-console",
@@ -179,15 +179,245 @@
       "task": "先承接 Persona 正式文档协议与资产读取边界，再进入 UI 实现。",
       "output_path": "docs/persona-*, src/tools/persona, server/application/persona",
       "total": 5,
-      "completed": 0,
-      "in_progress": 1,
+      "completed": 1,
+      "in_progress": 0,
       "review": 0,
-      "queued": 1,
-      "cancelled": 3,
+      "queued": 0,
+      "cancelled": 4,
       "high_risk": 0
     }
   ],
   "tasks": [
+    {
+      "task_id": "task_mqvvtu59_080d6525",
+      "title": "C3 接通 Journey generation API、落库与审计",
+      "module": "journey-generation",
+      "risk": "high",
+      "task_type": "cross_module",
+      "review_required": true,
+      "description": "在 C1/C2 完成后，把 Journey generation 接到正式 API 与宿主链路，完成 server/journey-generate.cjs、api/journey-generate.js、正式文档保存、revision 写入、usage event / Journey run audit 记录与宿主测试。范围限定在 journey-generation 宿主、必要的 persistence 接线与测试，不进入 admin UI 和前端生成入口。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-27T04:51:02.493Z",
+          "note": ""
+        }
+      ],
+      "status": "queued",
+      "commit": null,
+      "verdict": null
+    },
+    {
+      "task_id": "task_mqvvtu3o_ccc8a736",
+      "title": "C2 实现 Journey generation 应用编排服务",
+      "module": "journey-generation",
+      "risk": "high",
+      "task_type": "cross_module",
+      "review_required": true,
+      "description": "在 C1 完成后，建立 server/application/journey-generation/service.cjs 及相关生成器，串起 resolvePersonaInputs、generateSkeleton、runPersonas、synthesizeJourney、失败释放积分等正式编排步骤，并补纯服务层测试。范围限定在 journey-generation 应用层，不接 HTTP 宿主和 admin 页面。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-27T04:51:02.436Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-27T10:52:38.912Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-27T11:11:49.395Z",
+          "note": "Scope stayed strictly inside server/application/journey-generation/* as requested. No HTTP host, admin UI, assistant entry, billing-config UI, or Persona UI changes."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-27T11:21:59.464Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-27T11:32:54.536Z",
+          "note": "Scope stayed inside service.cjs and service.test.cjs only. apply_patch was blocked by a local Windows sandbox helper launch failure, so the same minimal edits were written through controlled shell file writes."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-27T11:38:17.595Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "f985c73",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mqvvtu2e_ed2748fa",
+      "title": "C1 建立 Journey generation protocol 与结果对象",
+      "module": "journey-generation",
+      "risk": "normal",
+      "task_type": "implementation",
+      "review_required": true,
+      "description": "基于 docs/journey-orchestration-technical-design.md 与 docs/journey-implementation-closure-spec.md，建立 server/application/journey-generation/protocol.cjs，落地 JourneyGenerationRequest、JourneySkeleton、PersonaRunResult、JourneySynthesisResult、JourneyGenerationResponse 的运行时校验与测试。范围限定在 journey-generation 协议层与测试，不接模型调用、不接宿主 API。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-27T04:51:02.390Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-27T05:01:19.535Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-27T09:54:45.452Z",
+          "note": "Implementation stays inside journey-generation protocol scope only. It follows the existing assistant/persona handwritten normalizer style and does not touch service orchestration, HTTP hosts, persistence, billing, or admin UI."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-27T10:24:43.517Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-27T10:40:23.378Z",
+          "note": "Addressing review follow-up for extraNotes maxLength=1000 and non-empty contrastingPersonaIds."
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-27T10:41:27.802Z",
+          "note": "Follow-up review fix kept strictly inside journey-generation protocol scope. No service, host, persistence, admin, or billing changes."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-27T10:44:18.959Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "9394e27ea9e46714849e7a8463fb71e54ca2aa2b",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mquy8xch_03d6511c",
+      "title": "B3 落地 Journey run audit 后端闭环",
+      "module": "billing-entitlements",
+      "risk": "high",
+      "task_type": "payment",
+      "review_required": true,
+      "description": "基于现有 usage / billing / admin 后端基础，补齐 Journey run audit 的正式查询后端闭环，让后台能查询单次 Journey run 的业务审计记录而不是只看通用 ai usage event。范围限定在 server/application/billing-config.cjs、必要 host 接线、repository 扩展、src/features/admin/api.ts contract 同步与对应测试；不进入 admin 页面 UI、Journey generation 编排、动作积分写入、模型策略写入或 Persona 代码。归属阶段主任务：task_mqqp0gnh_9e85a7d8。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-26T13:10:59.537Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-26T13:11:04.850Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-26T13:24:35.949Z",
+          "note": "Current minimum viable record chain intentionally reads from the existing ai_usage_events persistence path while returning a separate JourneyRunAuditRecord contract. conversationId remains nullable because no exact source field exists in the current assistant request/response files. Unrelated pre-existing build output change in src/features/roundtable-lite/data.json was not part of this task."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-26T13:32:31.471Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-26T13:33:29.236Z",
+          "note": "Addressing the single review blocker by aligning providerKey/modelKey filtering with JourneyRunAuditRecord fallback normalization for legacy ai_usage_events."
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-26T13:35:41.847Z",
+          "note": "This keeps the current minimum-viable contract truthful: Journey run audit still reuses existing ai_usage_events as its source, including legacy records that only have provider/model. Added explicit coverage for legacy-only provider/model records, unfiltered reads, providerKey/modelKey filtering, and mixed legacy+new pagination behavior. Unrelated generated src/features/roundtable-lite/data.json change remains outside this task scope."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-26T13:37:10.355Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-27T04:53:51.068Z",
+          "note": "This resubmission closes the previous workflow-only blocker by attaching the local commit hash for the already-reviewed B3 changes. Unrelated generated src/features/roundtable-lite/data.json change and untracked docs/stage-ab-acceptance-report.md remain outside task scope."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-27T04:57:22.848Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "116e8cb",
+      "verdict": "approved"
+    },
+    {
+      "task_id": "task_mqs4fle3_ab4068b8",
+      "title": "B2 落地模型策略写入闭环",
+      "module": "billing-entitlements",
+      "risk": "high",
+      "task_type": "payment",
+      "review_required": true,
+      "description": "在现有 billing-config 正式读链路基础上，补齐模型策略配置的正式写入闭环，让管理员可以安全修改 provider / model / endpoint / apiKeyRef / timeout / token limit / enabled 等策略字段。范围限定在 server/application/billing-config.cjs、server/infrastructure/cloudbase/billing-config/*、必要 host 接线与 admin API contract 同步；不进入 admin 页面 UI、Journey generation、动作积分写入、Journey run audit、Persona 或真实供应商 SDK。归属阶段主任务：task_mqqp0gnh_9e85a7d8。",
+      "events": [
+        {
+          "action": "create",
+          "at": "2026-06-24T13:40:49.803Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-24T13:40:54.271Z",
+          "note": "开始 B2：先读取 docs/flexible-credit-billing.md、docs/journey-implementation-closure-spec.md 与现有 billing-config / CloudBase repository / admin API 真实代码，确认既有读链路、权限边界和模型策略字段真源；随后按 TDD 先补应用层与仓储层失败测试，再以最小范围实现 UpdateModelPolicyCommand、expectedVersion 并发保护、admin/billing-admin 写权限与 apiKeyRef-only 持久化。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-24T13:57:58.775Z",
+          "note": "Verification passed on commit 4409066. The repo still has an unrelated generated change in src/features/roundtable-lite/data.json from npm run build; it was intentionally left out of this task commit."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-24T14:10:37.050Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-26T12:01:00.768Z",
+          "note": "开始整改唯一阻断项：补旧主键 toolKey:actionKey:tierKey 到新主键 toolKey:actionKey 的写时迁移与读侧去重偏好，确保 updateModelPolicy 不留下双记录，listAiModelPolicies 和 usage-recorder 在历史旧数据并存时稳定落到唯一正式策略。先补失败测试，再最小修改 application/repository。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-26T12:39:49.616Z",
+          "note": "重新提交 changes requested 后的唯一阻断修复。选择的是“写时迁移”，不是单独迁移脚本。验证覆盖：旧键迁移不留双记录、list 只返回唯一正式策略、usage-recorder 在 legacy+formal 并存时稳定解析正式策略、既有 optimistic concurrency / apiKeyRef-only / admin+billing-admin 权限测试继续通过。`src/features/roundtable-lite/data.json` 为 build 产生的无关变更，未纳入本次提交。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-26T12:55:16.128Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-26T13:01:41.120Z",
+          "note": "本次是针对 review 中唯一剩余阻断的整改提交。继续采用“写时迁移”，未改动此前已修好的 legacy->formal 迁移删除、usage-recorder 优先 canonical 记录、optimistic concurrency、admin/billing-admin 权限、apiKeyRef-only 约束。新增测试覆盖：>200 条正式策略分页正确、offset>=200 仍返回数据、policyId/providerKey 过滤不会因旧 200 条截断而漏命中、legacy+formal 并存时 collapse 后分页仍只返回唯一 canonical 策略。`src/features/roundtable-lite/data.json` 为 build 产生的无关变更，未纳入提交。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-26T13:08:40.462Z",
+          "note": ""
+        }
+      ],
+      "status": "completed",
+      "commit": "87b4002",
+      "verdict": "approved"
+    },
     {
       "task_id": "task_mqrzrcyl_505c1f7a",
       "title": "A1-R3 接通 Persona 正式文档读链路与最小宿主验收",
@@ -201,11 +431,26 @@
           "action": "create",
           "at": "2026-06-24T11:30:00.669Z",
           "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-24T13:15:43.935Z",
+          "note": "开始 A1-R3。先核对 persona/tool-documents 真源与 A1-R1/A1-R2 产物，确认沿用现有正式文档链路；随后在独立 linked worktree 中按 TDD 先补 repository/host 失败测试，再最小接通 Persona 正式读链路、project 归属校验与访问权限拦截。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-24T13:28:36.197Z",
+          "note": "Scope stayed within persistence-backend and persona read wiring only. No Journey generation orchestration, admin UI, billing config, or Persona UI changes."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-24T13:30:14.056Z",
+          "note": ""
         }
       ],
-      "status": "queued",
-      "commit": null,
-      "verdict": null
+      "status": "completed",
+      "commit": "00de26a",
+      "verdict": "approved"
     },
     {
       "task_id": "task_mqrzrctq_38e57482",
@@ -225,11 +470,36 @@
           "action": "start",
           "at": "2026-06-24T11:33:40.306Z",
           "note": "开始 A1-R2。已确认当前主 worktree 脏且 server/application/persona 尚不存在；将按仓库规则转入 persona-assets 专属 linked worktree，在 server/application/persona 范围内以 TDD 先写失败测试，再补 protocol 与 mapping。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-24T12:53:17.684Z",
+          "note": "实现按 TDD 先落失败测试再补 protocol 与 mapping。traits 映射严格要求 confirmed 值；进入 3500-5000 区间时只压缩 behavior/context summaries，超过 5000 返回 PERSONA_INPUT_TOO_LARGE。"
+        },
+        {
+          "action": "review",
+          "at": "2026-06-24T12:58:40.529Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-24T13:06:42.859Z",
+          "note": "处理 review 阻断点：将 3500 视为严格输出上限；当去掉 behavior/context summaries 后 base 仍超过 soft limit 时，返回 PERSONA_INPUT_TOO_LARGE，并补对应边界测试。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-24T13:06:49.994Z",
+          "note": "Follow-up commit on top of 80561ab. Scope stayed within mapping rule enforcement and focused tests; no CloudBase host wiring or Journey generation changes."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-24T13:07:52.024Z",
+          "note": ""
         }
       ],
-      "status": "in_progress",
-      "commit": null,
-      "verdict": null
+      "status": "completed",
+      "commit": "ce1a397",
+      "verdict": "approved"
     },
     {
       "task_id": "task_mqrzrcl4_65b9f371",
@@ -490,11 +760,41 @@
           "action": "create",
           "at": "2026-06-23T13:41:23.405Z",
           "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-24T13:38:15.279Z",
+          "note": "开始 B1。已确认当前环境挂载到 canonical repo，主 worktree 基线干净；按 repo 规则将先创建 billing-entitlements 专属 linked worktree，并在该 worktree 内依据 docs/flexible-credit-billing.md、docs/journey-implementation-closure-spec.md 与现有 billing-config 链路做计划和 TDD，实现动作积分配置正式写入、expectedVersion 并发保护、服务端 admin/billing-admin 写权限与明确错误返回。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-24T14:00:55.823Z",
+          "note": "Excluded the untracked docs/superpowers plan artifact from the commit. Attempted broader TS/build verification too, but in this linked worktree npm run build fails before Vite because scripts/generate-roundtable-viz-data.cjs expects .roundtable-lite/tasks.jsonl inside the current worktree, and npm exec tsc -- --noEmit hit a local npm cache EPERM with no local node_modules/.bin/tsc present; neither failure came from the billing-config code paths changed in this task."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-26T12:03:07.239Z",
+          "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-26T12:27:24.288Z",
+          "note": "处理 review 阻断点。已复核正式动作定价真源：唯一键仍是 toolKey + actionKey + tierKey，因为 listAiActionPricing、assistant billing 正式读链路和 docs/billing-design.md 都按 tierKey 工作。接下来在同一 linked worktree 中按 TDD 先补失败测试，再把 updateActionPricing、CloudBase 仓储与 admin API contract 调整为显式 tierKey 更新，并统一歧义错误为 ACTION_PRICING_AMBIGUOUS 409。"
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-26T12:41:57.101Z",
+          "note": "Confirmed the formal unique key remains toolKey + actionKey + tierKey, matching listAiActionPricing, assistant billing reads, pricingId semantics, and docs/billing-design.md. Submission excludes untracked docs/superpowers/."
+        },
+        {
+          "action": "review",
+          "at": "2026-06-26T13:01:21.341Z",
+          "note": ""
         }
       ],
-      "status": "queued",
-      "commit": null,
-      "verdict": null
+      "status": "completed",
+      "commit": "156e5075f59a636b80720fef93518a692d2de583",
+      "verdict": "approved"
     },
     {
       "task_id": "task_mqqp0c9y_90eba6c7",
@@ -509,10 +809,25 @@
           "action": "create",
           "at": "2026-06-23T13:41:17.734Z",
           "note": ""
+        },
+        {
+          "action": "start",
+          "at": "2026-06-24T13:32:46.638Z",
+          "note": ""
+        },
+        {
+          "action": "submit",
+          "at": "2026-06-24T13:32:46.724Z",
+          "note": "A1-R1(task_mqrzrcl4_65b9f371)、A1-R2(task_mqrzrctq_38e57482)、A1-R3(task_mqrzrcyl_505c1f7a) 均已完成并获批。当前 main 仍有 src/features/roundtable-lite/data.json 的生成态改动，未纳入本次阶段收口说明。"
+        },
+        {
+          "action": "cancel",
+          "at": "2026-06-24T13:46:13.169Z",
+          "note": "2026-06-24 取消该阶段汇总任务。A1-R1(task_mqrzrcl4_65b9f371)、A1-R2(task_mqrzrctq_38e57482)、A1-R3(task_mqrzrcyl_505c1f7a) 已分别完成、获批并合入 main；本汇总任务提交的 evidence 绑定到 commit c52aaef，仅覆盖 A1-R2，不足以作为整阶段收口提交，故按 superseded administrative summary 取消，避免仪表盘长期显示误导性的 review 状态。"
         }
       ],
-      "status": "queued",
-      "commit": null,
+      "status": "cancelled",
+      "commit": "c52aaef",
       "verdict": null
     },
     {
@@ -1868,6 +2183,126 @@
     }
   ],
   "reviews": [
+    {
+      "review_id": "review_mqwadke0_c1f830d4",
+      "at": "2026-06-27T11:38:17.592Z",
+      "task_id": "task_mqvvtu3o_ccc8a736",
+      "verdict": "approved",
+      "comments": "复核通过，无新增阻断。\n\n这轮整改把前一轮 review 的两个 P1 都收住了：\n- `resolvePersonaInputs()` 现在不再把畸形依赖结果静默降级成 `[]`，而是正式校验 `personas` 数组存在、数量与请求一致、`personaId` 集合与请求一致；对应的 `{}` / 少人 / id 不匹配三条失败测试也都已补齐。\n- 计费路径已经从多 reservation / 多次 commit 收口成单 reservation / 单次 commit，并在 `save` 后 `commit` 失败时显式走 `rollbackJourneyResult` 补偿，返回专门的 `JOURNEY_BILLING_COMMIT_FAILED`。这把之前“文档已保存但接口失败”的半成状态从默认隐式行为变成了有补偿、有错误码、有测试的正式路径。\n\n我重新执行了 `node --test server/application/journey-generation/protocol.test.cjs server/application/journey-generation/service.test.cjs`，28/28 通过；`git diff --cached --check` 也通过。当前提交可以进入合并流程。",
+      "reviewer": "Codex"
+    },
+    {
+      "review_id": "review_mqw9slnn_2cf86265",
+      "at": "2026-06-27T11:21:59.459Z",
+      "task_id": "task_mqvvtu3o_ccc8a736",
+      "verdict": "changes_requested",
+      "comments": "发现 2 个 P1，先退回整改。\n\n1. P1 `server/application/journey-generation/service.cjs:223-230`\n`resolvePersonaInputs()` 在 `personaService.getPersonaInputs()` 返回畸形结果时，会把 `result.personas` 非数组的情况静默降级成 `[]`，然后主链继续往下执行。这样会直接跳过全部 `persona_run`，但仍然成功生成并保存 Journey，甚至还会按 `personaCount = 0` 把 `persona_run` 计费改成 0。最小复现我已经跑过：让 `getPersonaInputs()` 返回 `{}`，当前 service 会成功返回，`runPersonas` 根本不执行，response 里 `chargedCredits` 只剩 skeleton+synthesis。这和正式 contract 冲突，因为请求里已经确认了 `personaIds`，编排步骤也明确要求“对每个 Persona 执行 persona_run”。这里不能静默吞掉依赖契约错误，应该把“空结果 / 数量不匹配 / personaId 不匹配”都提升为 `JOURNEY_PERSONA_UNAVAILABLE`。\n\n2. P1 `server/application/journey-generation/service.cjs:155-180` + `365-412`\n当前顺序是先 `saveJourneyResultOrThrow()`，再逐个 `commitJourneyCredits()`。如果保存成功后某个 `commitCredits()` 中途失败，catch 只会释放还处于 `reserved` 状态的 reservation，然后把整个请求作为错误返回；但此时 Journey 文档已经落库，外部看到的是“接口失败”，系统内部却已经有了正式文档。这个半成状态我也做了最小复现：第二次 `commitCredits()` 抛错时，`saved = 1` 且服务最终返回 `JOURNEY_MODEL_CALL_FAILED`。这会导致调用方重试时重复生成/重复保存，同一 run 的持久化与计费状态失去一致性。至少需要把这条失败路径显式收口并补测试，不能让“文档已保存但接口失败”作为当前默认行为悄悄进入主线。\n\n整改方向：\n- 对 `resolvePersonaInputs()` 增加正式结果校验：`personas` 必须是数组、数量必须与请求 `personaIds` 一致、返回的 `personaId` 集合必须与请求一致，否则抛 `JOURNEY_PERSONA_UNAVAILABLE`。\n- 补服务层测试覆盖 `getPersonaInputs()` 返回 `{}` / 少人 / personaId 不匹配时的失败行为。\n- 针对“保存成功后 commit 失败”明确收口策略，并补一条失败测试。无论你选“保存前先完成所有 commit”还是“保存后 commit 失败时返回专门错误并保证可补偿”，都要把 contract 说清楚并在测试里钉住；当前这种静默留下已保存文档的行为不能直接通过。",
+      "reviewer": "Codex"
+    },
+    {
+      "review_id": "review_mqw8g5fr_7bd04c22",
+      "at": "2026-06-27T10:44:18.951Z",
+      "task_id": "task_mqvvtu2e_ed2748fa",
+      "verdict": "approved",
+      "comments": "复核通过，无新增阻断。\n\n本轮整改已经把前一轮 review 的两个协议缺口补齐：\n- `server/application/journey-generation/protocol.cjs` 已对 `extraNotes` 做 `trim` 后的 1000 字上限校验，和 `docs/journey-orchestration-technical-design.md:150`、`docs/journey-implementation-closure-spec.md:544` 一致。\n- `server/application/journey-generation/protocol.cjs` 已对 `contrastingPersonaIds` 加非空约束，字段存在时不能为空数组，符合“只在确有差异时返回”的 contract 语义。\n\n我重新执行了 `node --test server/application/journey-generation/protocol.test.cjs`，18/18 通过。当前提交可以合并。",
+      "reviewer": "Codex"
+    },
+    {
+      "review_id": "review_mqw7qygp_63005544",
+      "at": "2026-06-27T10:24:43.513Z",
+      "task_id": "task_mqvvtu2e_ed2748fa",
+      "verdict": "changes_requested",
+      "comments": "发现 2 个协议层阻断，先退回整改。\n\n1. P1 `server/application/journey-generation/protocol.cjs:76`\n`normalizeJourneyGenerationRequest()` 对 `extraNotes` 只做了 `normalizeOptionalString()`，没有实现文档要求的长度限制。当前超长字符串会被协议层直接接受，而 `docs/journey-orchestration-technical-design.md:148` 已明确写了 “`extraNotes` 可选，但要做长度限制”。这会让请求 contract 与文档不一致，也会把无限制文本直接放进后续生成链路。\n\n2. P1 `server/application/journey-generation/protocol.cjs:469-490`\n`contrastingPersonaIds` 在字段存在时只校验了“是字符串数组”，没有校验“有内容”。因此 `contrastingPersonaIds: []` 会被接受。但 `docs/journey-orchestration-technical-design.md:276` 明确这个字段“只在确有差异时返回”，语义上不应该允许 present-but-empty。否则下游无法区分“没有差异所以不返回”与“返回了一个空的差异集合”。\n\n整改方向：\n- 给 `extraNotes` 加正式长度上限，并补一条超限失败测试。\n- 对 `contrastingPersonaIds` 增加非空约束；若没有差异，应省略该字段而不是传空数组，并补对应失败测试。",
+      "reviewer": "Codex"
+    },
+    {
+      "review_id": "review_mqvw1zmm_29c7d88e",
+      "at": "2026-06-27T04:57:22.846Z",
+      "task_id": "task_mquy8xch_03d6511c",
+      "verdict": "approved",
+      "comments": "批准。上一轮剩下的唯一阻断就是 evidence 缺少本地 commit hash；这次已经用 `116e8cb` 重新提交，同一批代码的审查对象现在固定成了稳定快照。\n\n我再次核对了当前提交对应的工作区状态与验证链：\n\n- `node --test server/application/billing-config.test.cjs server/application/assistant/usage-recorder.test.cjs server/infrastructure/cloudbase/billing-config/repository.test.cjs server/billing-config.test.cjs` 通过 `43/43`\n- `npm run build` 通过，仅保留既有 Vite chunk-size warning 与 CJS Node API deprecation warning\n\n代码层面此前的阻断也已经收住：`listJourneyRunAuditRecords()` 现在先读取 `toolKey = \"journey-map\"` 的 audit 源记录子集，再映射成 `JourneyRunAuditRecord`，最后按 fallback 后的 `providerKey/modelKey` 做过滤和分页，所以历史 `provider/model` 旧记录与新记录的显示、过滤和分页语义一致。宿主路由、admin contract、usage-event 写入扩展与对应测试也都在这次 commit 范围内。\n\n可以批准完成。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mquz6le7_d06a5ee5",
+      "at": "2026-06-26T13:37:10.351Z",
+      "task_id": "task_mquy8xch_03d6511c",
+      "verdict": "changes_requested",
+      "comments": "需要修改后再提审。\n\n代码层面的上一轮阻断已经收住了。我本地复核了这次 diff，并做了最小复现回归：`providerKey/modelKey` 过滤现在是在 `JourneyRunAuditRecord` 归一化之后做，不再出现“列表里看得见，但按 provider/model 过滤不到”的分叉；你补的 `43/43` 测试和 `npm run build` 我也复跑通过了。\n\n现在剩下的唯一问题是工作流证据不完整：这条任务在 Roundtable Lite 的最新 `submit` 事件里仍然是 `commit: null`。对于 Git 项目，这意味着这次 review 对象不是一个稳定的版本快照，而是当前工作区未提交 diff。后续只要工作区继续变化，这条已审内容就会漂移，和 Roundtable Lite 要求在 evidence 里记录本地 commit hash 的做法冲突。\n\n整改要求很简单：\n1. 先把这轮 B3 改动整理成一次本地 commit。\n2. 用该 commit hash 重新 `submit` 同一条任务。\n3. 其他代码不用再改；这次代码层面的 provider/model fallback 过滤问题我不再追加新的业务阻断。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mquz0m7g_672bb476",
+      "at": "2026-06-26T13:32:31.468Z",
+      "task_id": "task_mquy8xch_03d6511c",
+      "verdict": "changes_requested",
+      "comments": "需要修改后再提审。\n\n[P1] `listJourneyRunAuditRecords()` 当前把 `providerKey/modelKey` 过滤直接下推到了原始 `ai_usage_events` 源记录上，但读模型 `JourneyRunAuditRecord` 自己又允许从旧字段 `provider/model` fallback 映射出 `providerKey/modelKey`。这导致历史记录会出现“列表里看得见，但按 provider/model 过滤不到”的不一致行为。代码路径很明确：`server/application/billing-config.cjs:247-266` 先用 `pickDefinedFilters(input, JOURNEY_RUN_AUDIT_FIELDS)` 对原始 `ai_usage_events` 做过滤；而真正的读模型映射在 `server/application/billing-config.cjs:786-804`，其中 `providerKey` / `modelKey` 是通过 `record.providerKey || record.provider`、`record.modelKey || record.model` 回填的。结果是旧数据只要还停留在历史形状（只有 `provider/model`，没有 `providerKey/modelKey`），不带过滤查询时能正常返回并显示 `providerKey=\"openai\"`，但一旦加 `providerKey=\"openai\"` 过滤就会被源侧过滤提前排除。我本地已经做了最小复现：种一条仅含 `provider: \"openai\"`、`model: \"gpt-5-mini\"` 的 `journey-map` 旧记录时，`listJourneyRunAuditRecords({limit:10,offset:0})` 返回 `total=1` 且映射后的 `providerKey=\"openai\"`，但 `listJourneyRunAuditRecords({providerKey:\"openai\"})` 返回 `total=0`。\n\n这不是纯历史脏数据边角问题，因为本任务自己声明“底层当前仍复用已存在的 `ai_usage_events` 落库链作为最小可用记录来源”。既然读模型要兼容这条既有来源，就不能让关键过滤条件只对新写入字段生效、对旧记录失效。\n\n整改要求：\n1. 让 Journey run audit 的 `providerKey/modelKey` 过滤语义和 `toJourneyRunAuditRecord()` 的 fallback 语义保持一致。要么在过滤前先做兼容归一化，要么把这两个过滤从源侧下推改成读模型层过滤，但不能继续出现“能显示、不能过滤”的分叉。\n2. 补测试覆盖至少这条场景：仅含历史 `provider/model`、缺失 `providerKey/modelKey` 的旧 `journey-map` 记录，在按 `providerKey` 或 `modelKey` 过滤时仍能命中。\n3. 如果你决定明确不兼容历史 `ai_usage_events` 形状，那就不能再把当前方案描述成“复用已存在的 ai_usage_events 作为最小可用来源”；需要显式收紧契约、补迁移或补数据回填策略。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mquy5y16_1312b2b9",
+      "at": "2026-06-26T13:08:40.458Z",
+      "task_id": "task_mqs4fle3_ab4068b8",
+      "verdict": "approved",
+      "comments": "批准。这轮把上次唯一剩余的分页阻断收干净了，而且我已经直接在主工作区 `HEAD = 87b4002ef646b7b56e0322b3acee024e1be1703d` 上复跑了你提交的两条验证链：\n\n- `node --test server/application/billing-config.test.cjs server/application/billing/index.test.cjs server/application/assistant/usage-recorder.test.cjs server/journey-chat.test.cjs server/infrastructure/cloudbase/billing-config/repository.test.cjs` -> `57/57` 通过\n- `npm run build` -> 通过，仅保留既有 Vite CJS deprecation 与大 chunk warning\n\n我重点核对的点都对上了：\n\n1. `server/application/billing-config.cjs:161-188` 的 `listAiModelPolicies()` 已不再在 collapse 前把结果硬截到 200 条，而是通过 `loadAllAiModelPolicyRecords()` / `listAllRecords()` 分批拉完整个 `ai_model_policies` 结果集后，再做 legacy/formal collapse、后置过滤和分页，所以 `total / offset / hasMore` 语义恢复正确。\n\n2. 新增测试覆盖到了上轮明确指出的几个失真场景：\n   - `>200` 条正式策略时分页正确\n   - `offset >= 200` 仍能返回数据\n   - `policyId` / `providerKey` 后置过滤不会因为旧的 200 条截断而漏命中\n   - legacy + formal 并存时 collapse 后分页仍只返回唯一 canonical 策略\n\n3. 这轮没有带坏前一轮已修好的主线：写时迁移仍保留，legacy -> formal 删除旧键、防双记录、usage-recorder 优先 canonical 记录、optimistic concurrency、`admin` / `billing-admin` 权限、`apiKeyRef` only 都还在累计验证链里继续通过。\n\n可以批准完成。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mquxwj7c_5a62640f",
+      "at": "2026-06-26T13:01:21.336Z",
+      "task_id": "task_mqqp0gnh_9e85a7d8",
+      "verdict": "approved",
+      "comments": "批准。这个整改已经把上轮两个阻断点都收干净了，而且这次我直接在提审 worktree `D:\\knowledge\\codex\\design_02\\.worktrees\\task_mqqp0gnh_9e85a7d8` 上核对了 `HEAD = 156e5075f59a636b80720fef93518a692d2de583`，并复跑了你提交的验证命令，结果是 `24/24` 通过。\n\n我重点核对的点都对上了：\n\n1. `updateActionPricing` 已恢复为正式三维唯一键。`server/application/billing-config.cjs:267-320` 现在显式要求并传递 `tierKey`，`findActionPricingRecord()` 也改成按 `toolKey/actionKey/tierKey` 精确定位；更新后的记录保留原始 `tierKey`，不会再把多 tier 数据误收敛成二维键。\n\n2. CloudBase 正式路径的歧义错误码已修正。`server/infrastructure/cloudbase/billing-config/repository.cjs:60-74` 在同一 `toolKey/actionKey/tierKey` 命中多条时，现在直接抛 `BillingConfigError(\"ACTION_PRICING_AMBIGUOUS\", ..., 409)`；服务层 `server/application/billing-config.cjs:271-281` 会原样透传该业务错误，不再漂移成 `ACTION_PRICING_LOOKUP_FAILED 500`。\n\n3. Admin contract 和文档也同步了三维键语义。`src/features/admin/api.ts:30-51` 把 `AiActionPricingRecord.tierKey` 收紧为必填字符串，并让 `UpdateActionPricingCommand` 显式包含 `tierKey`；`docs/flexible-credit-billing.md` 与 `docs/journey-implementation-closure-spec.md` 也都补齐了这一点，所以接口、实现、测试、文档现在是一致的。\n\n4. 测试覆盖满足这轮风险等级。应用层测试覆盖了权限、负积分、not found、stale version、多 tier 精确更新、CloudBase 歧义 409；仓储层测试覆盖了同 action 不同 tier 精确命中、同 tier 重复歧义、CAS 仅更新目标 tier。范围也保持在这轮任务声明内，没有把 `docs/superpowers/` 之类的无关内容带进提交。\n\n可以批准完成。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mquxopdi_a58690d5",
+      "at": "2026-06-26T12:55:16.087Z",
+      "task_id": "task_mqs4fle3_ab4068b8",
+      "verdict": "changes_requested",
+      "comments": "需要修改后再提审。\n\n[P1] `server/application/billing-config.cjs:161-189` 把 `listAiModelPolicies()` 改成了“先从仓储固定读取 `limit: 200, offset: 0`，再在内存里 collapse + filter + slice”。这会直接破坏正式分页和总数语义：当正式策略超过 200 条时，第 201 条及之后的记录永远不会进入 `collapsed`，所以 `page.total` 会被错误截断在 200，`offset >= 200` 的页面也永远拿不到数据。我本地做了最小复现：用 201 条正式 model policy 种入 `InMemoryBillingConfigRepository` 后调用 `listAiModelPolicies({ limit: 50, offset: 200 })`，实际返回 `page.total = 200`、`items.length = 0`，但正确结果应该至少还能拿到第 201 条。这个问题同样会影响 `policyId/providerKey/modelKey` 等后置过滤条件，因为这些过滤现在也是在 200 条截断之后才执行。\n\n这轮修复针对“旧键迁移不留双记录、usage-recorder 稳定落 canonical 记录”这条主线本身是对的，相关测试也过了；但把正式列表接口改成上限 200 的截断读取，会让 admin/运维侧在数据稍大时拿到错误 total 和错误分页结果，所以还不能批准。\n\n整改要求：\n1. 保留 collapse/去重思路，但不要在进入 collapse 之前把底层读取硬编码成 `limit: 200, offset: 0`。\n2. 至少要保证 `listAiModelPolicies` 的 `total / hasMore / offset` 对调用方仍然成立；如果必须做内存 collapse，就需要一个不会把结果集先截断到 200 的读取方案。\n3. 补测试覆盖：\n   - >200 条正式策略时分页仍正确\n   - 后置过滤条件（至少 `policyId` 或 `providerKey`）不会因为前 200 条截断而漏掉命中记录\n   - legacy + formal 并存时，修复后的分页仍只返回唯一 canonical 策略。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mquvtn4y_0a6d6405",
+      "at": "2026-06-26T12:03:07.235Z",
+      "task_id": "task_mqqp0gnh_9e85a7d8",
+      "verdict": "changes_requested",
+      "comments": "需要修改后再提审。\n\n[P0] `updateActionPricing` 当前按 `toolKey + actionKey` 查唯一记录，但现有正式计费体系和文档都把动作定价建模为 `toolKey + actionKey + tierKey`。真源可以直接看到：`server/application/billing-config.cjs:136-150` 的 `listAiActionPricing()` 仍按 `tierKey` 过滤；`server/application/billing/index.cjs:892-900` 的 assistant 计费正式读链路也是按 `toolKey/actionKey/tierKey` 取价；`docs/billing-design.md:201-214` 也把 `tierKey` 列为一次收费 AI 动作的必备字段。与此同时，这次提交里的 `server/application/billing-config.cjs:264-328` 却只允许按 `toolKey/actionKey` 定位并更新一条记录，完全没有 `tierKey` 入参。结果是只要某个 action 合法地存在多条 tier 记录，这个写接口就没有能力精确修改目标 tier，只能报歧义或误改错误记录。本次提交自己的仓储测试其实已经证明这种数据形态是合法存在的：`server/infrastructure/cloudbase/billing-config/repository.test.cjs:476-505` 明确用 `standard` 和 `deep` 两条同 action 记录作为测试夹具，并断言会命中“歧义”。这说明当前实现并没有“闭环”，而是把已有三维定价模型截断成了二维更新接口。\n\n[P1] 歧义错误在真实 CloudBase 路径上会被错误地上报成 `500 ACTION_PRICING_LOOKUP_FAILED`，而不是你提交说明里承诺的 `409 ACTION_PRICING_AMBIGUOUS`。原因是 `server/infrastructure/cloudbase/billing-config/repository.cjs:60-72` 在多记录命中时抛的是原生 `Error`，但 `server/application/billing-config.cjs:268-278` 只会直通 `BillingConfigError`，其余异常一律包装成 `ACTION_PRICING_LOOKUP_FAILED` `500`。也就是说，内存仓储和 CloudBase 仓储在同一个歧义场景下返回的错误码不一致，测试没覆盖到服务层 + CloudBase 的这条正式路径，所以这个偏差会直接进生产。\n\n整改要求：\n1. 先明确动作定价的正式唯一键到底是不是 `toolKey + actionKey + tierKey`。如果是，就把 `updateActionPricing` 命令、查找逻辑、CAS 更新和 admin API contract 全部改成显式携带 `tierKey`，并补对应测试；不要再用二维键去更新三维数据。\n2. 如果你确实想把动作定价收口成 `toolKey + actionKey`，那必须同步迁移/收敛现有所有读链路、文档和数据模型，包括 `listAiActionPricing`、assistant billing 正式读取、相关测试与文档，不能只改单边写接口。\n3. 无论采用哪条路线，都要让 CloudBase 仓储的歧义分支返回可被服务层识别的明确业务错误，保证正式路径也能稳定返回声明中的 `409 ACTION_PRICING_AMBIGUOUS`，并补一条服务层测试覆盖“CloudBase 歧义 -> 409”这条路径。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mqs5hwfq_dcb70fed",
+      "at": "2026-06-24T14:10:37.046Z",
+      "task_id": "task_mqs4fle3_ab4068b8",
+      "verdict": "changes_requested",
+      "comments": "需要修改后再提审。\n\n[P1] `server/application/billing-config.cjs:272-323` 把模型策略主键从旧的 `toolKey:actionKey:tierKey` 改成了新的 `toolKey:actionKey`，但当前写入路径只会按新主键读取/保存，完全没有兼容迁移或清理旧记录。结果是只要正式库里已经有旧格式策略，例如 `journey-map:proposal:standard`，这次 `updateModelPolicy()` 就会新建一条 `journey-map:proposal`，旧记录仍然保留，直接打破了这轮任务自己声明的“同一策略主键固定为 toolKey:actionKey，写入时只保留这一条正式策略记录”。我本地用 `InMemoryBillingConfigRepository` 复现过：旧键存在时执行一次 `updateModelPolicy(expectedVersion=0)`，库里会同时留下 `journey-map:proposal:standard` 和 `journey-map:proposal` 两条记录。\n\n这个兼容性问题还会影响现有读侧：`server/application/assistant/usage-recorder.cjs:100-108` 仍然带着 `tierKey` 去读模型策略，但 `server/application/billing-config.cjs:156-179` 的 `listAiModelPolicies()` 已经不再按 `tierKey` 过滤。只要库里同时存在旧记录和新记录，usage recorder / admin 列表就会面对并存脏数据，provider 解析结果取决于排序，行为不再稳定。\n\n整改要求：在再次提审前，把“旧键模型策略 -> 新键模型策略”的过渡路径补完整，至少要保证正式库不会长期并存两套主键记录，并补测试覆盖以下场景：1) 已存在旧 `tool:action:tier` 记录时，`updateModelPolicy` 不会留下双记录；2) 旧记录迁移后，`listAiModelPolicies` 和 usage-recorder 的 provider 解析结果稳定落到唯一正式记录；3) 如果你决定明确不兼容历史数据，也需要把迁移/清理动作显式落在仓储或运维脚本里，而不是默认让写入接口静默制造重复记录。",
+      "reviewer": "reviewer-subagent"
+    },
+    {
+      "review_id": "review_mqs41ytp_eaaa5346",
+      "at": "2026-06-24T13:30:14.029Z",
+      "task_id": "task_mqrzrcyl_505c1f7a",
+      "verdict": "approved",
+      "comments": "批准。A1-R3 在范围内把 Persona 正式文档读取接进了现有 tool-documents / CloudBase 链路，没有把模块边界扩散到 Journey generation、billing 或 admin。server/application/persona/service.cjs 复用了 toolDocumentService.readDocument，并把底层通用持久化错误收敛为 Persona 读取语义：缺失文档映射为 PERSONA_NOT_FOUND，跨项目读取映射为 PERSONA_PROJECT_MISMATCH，权限问题映射为 PERSONA_ACCESS_DENIED；同时对 toolId 和 content 形状做了最小防守校验。server/tool-documents.cjs 只新增了 readPersonaDocument action，并通过 getPersonaService() 复用现有宿主 service，不影响既有 Journey 文档写链。测试覆盖也足够匹配本轮风险：persona service 读取/缺失/跨项目/越权场景，宿主 action 读取与 project mismatch，CloudBase repository 对 persona 文档的 round-trip，以及原有 tool-documents 测试均通过。复跑验证通过：node --test server/application/persona/protocol.test.cjs server/application/persona/mapping.test.cjs server/application/persona/service.test.cjs server/application/tool-documents.test.cjs server/tool-documents.test.cjs server/tool-documents.persona-read.test.cjs server/infrastructure/cloudbase/tool-documents/repository.test.cjs 为 34/34，git diff --cached --check 通过。当前可以批准完成 A1-R3。",
+      "reviewer": "codex"
+    },
+    {
+      "review_id": "review_mqs397bp_85adfada",
+      "at": "2026-06-24T13:07:52.021Z",
+      "task_id": "task_mqrzrctq_38e57482",
+      "verdict": "approved",
+      "comments": "批准。上一轮唯一阻断点已修复：server/application/persona/mapping.cjs 现在把 3500 视为严格输出上限，在原始输入位于 3500-5000 区间时，若去掉 behavior/context summaries 后的 base 内容仍然超过 soft limit，则直接抛 PERSONA_INPUT_TOO_LARGE，而不是返回一个仍超 3500 的结果。新增测试已明确覆盖该边界场景：非 summary 字段单独把输入推到 soft limit 之上、behavior/context summaries 为空时，断言返回 PERSONA_INPUT_TOO_LARGE。复跑验证通过：node --test server/application/persona/*.test.cjs 为 13/13，git diff --cached --check 通过；我也用更长的基础摘要手工复现，当前实现会稳定抛出 PersonaReadError(code=PERSONA_INPUT_TOO_LARGE)。本轮 protocol、映射规则、confirmed traits 约束和错误码集合可以批准完成。",
+      "reviewer": "codex"
+    },
+    {
+      "review_id": "review_mqs2xdse_cd98397a",
+      "at": "2026-06-24T12:58:40.526Z",
+      "task_id": "task_mqrzrctq_38e57482",
+      "verdict": "changes_requested",
+      "comments": "发现一个新的阻断点，暂不批准。server/application/persona/mapping.cjs:55-74 的长度规则在边界条件下不满足本轮声明的 contract。当前 applyPersonaInputLengthRules 只要原始输入长度位于 3500-5000，就尝试只压缩 behavior/context summaries；但 compressResolvedPersonaInput 在 line 74 处如果发现去掉所有 summaries 后的 base 仍然 >= 3500，会直接返回这个 base。结果是函数可能返回一个长度仍然大于 3500、但没有抛 PERSONA_INPUT_TOO_LARGE 的 ResolvedPersonaInput。我已用实际运行复现：让 skeleton.summary 单独达到约 3600 字、behavior summary 很短时，返回结果长度为 3948，behavior/context summaries 都为空，仍然成功返回。这个结果与当前任务写明的规则“<=3500 完整保留；3500-5000 只压缩 behavior/context summaries；>5000 返回 PERSONA_INPUT_TOO_LARGE”不一致，因为压缩后并没有把输出收回到 3500 以内，也没有转成错误。建议整改方向二选一，并在文档/测试/实现三处保持一致：1) 如果 soft limit 是严格输出上限，那么当 base（即清空 summaries 后）仍然 >3500 时，应返回 PERSONA_INPUT_TOO_LARGE；2) 如果 soft limit 只是‘优先压缩 summaries’阈值，而非强制输出上限，那么需要把 contract 改写清楚，并补覆盖这个边界场景的测试。除此之外，错误码、confirmed traits 约束、基础映射和现有 12/12 测试都没有问题。",
+      "reviewer": "codex"
+    },
     {
       "review_id": "review_mqs206e0_b125cff7",
       "at": "2026-06-24T12:32:51.288Z",

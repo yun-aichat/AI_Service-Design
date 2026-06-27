@@ -257,6 +257,13 @@ type JourneyGenerationResponse = {
 14. 记录 `Journey run audit`
 15. 返回前端结果
 
+JourneySynthesisResult 校验至少包含：
+
+- 每个 row 集合都要覆盖骨架中的全部 `stepId`
+- `supportingPersonaIds` 必须为非空数组
+- `contrastingPersonaIds` 只在确有差异时返回，且一旦返回必须为非空数组
+- `analysis.opportunities` 与 `analysis.differences` 允许为空数组，但字段必须存在
+
 ### 5.4 动作层与计费关系
 
 Journey generation 的动作层正式固定为：
@@ -511,6 +518,7 @@ type JourneyConfirmCard = {
   scenario: string
   coreTask: string
   scope: string
+  // Optional supplemental constraints, max length 1000 characters.
   extraNotes?: string
   chargeHint: string
 }
@@ -528,6 +536,12 @@ type JourneyConfirmCard = {
 1. 用户点击 `确认并生成`
 2. 确认卡片校验通过
 3. 当前没有进行中的正式 run
+
+确认卡片校验至少包含：
+
+- `scenario`、`coreTask`、`scope` 非空
+- `personaIds` 至少 1 个，且不能重复
+- `extraNotes` 去除首尾空白后最大 1000 个字符
 
 前端不允许在对话过程中自动后台生成。
 

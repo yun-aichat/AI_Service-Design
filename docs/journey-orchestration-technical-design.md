@@ -125,6 +125,7 @@ type JourneyGenerationRequest = {
   scenario: string
   coreTask: string
   scope: string
+  // Optional supplemental constraints, max length 1000 characters.
   extraNotes?: string
   personaIds: string[]
 }
@@ -145,7 +146,8 @@ type JourneyGenerationRequest = {
 - `scenario`、`coreTask`、`scope` 不能为空
 - `personaIds` 至少包含 1 个 Persona
 - `personaIds` 不能重复
-- `extraNotes` 可选，但要做长度限制
+- `extraNotes` 可选
+- `extraNotes` 去除首尾空白后，最大长度为 1000 个字符
 
 ### 4.2 JourneySkeleton
 
@@ -254,6 +256,7 @@ type JourneyRowCell = {
   stepId: string
   summary: string
   supportingPersonaIds: string[]
+  // Optional, but must be non-empty when present.
   contrastingPersonaIds?: string[]
 }
 
@@ -273,7 +276,7 @@ type JourneyAnalysis = {
 
 - 每个 row 集合都要覆盖骨架中的全部 `stepId`
 - `supportingPersonaIds` 不能为空
-- `contrastingPersonaIds` 只在确有差异时返回
+- `contrastingPersonaIds` 只在确有差异时返回，且一旦返回必须为非空数组
 - `opportunities`、`differences` 允许为空数组，但字段必须存在
 
 ## 4.4.1 Persona 正式输入对象
